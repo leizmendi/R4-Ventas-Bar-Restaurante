@@ -1,0 +1,47 @@
+Option Compare Database
+Option Explicit
+
+
+Public Function MyInputBox(strTitulo As String, Optional strPrompt As String = "" _
+                                            , Optional strDefault As String _
+                                            , Optional strInputMask As String _
+                                            , Optional intTextoEnriquecido As Integer = False _
+                                            , Optional intAllowEdit As Integer = True _
+                                            , Optional strOKcaption As String = "Aceptar" _
+                                            , Optional strCancelCaption As String = "Cancelar" _
+                                            , Optional strFontName As String = "", Optional strAdjuntarFicheros As String = "NO")
+    On Error GoTo Error_MyInputBox
+    Dim strXML As String
+    PonXML strXML, "Titulo", strTitulo
+    PonXML strXML, "Prompt", strPrompt
+    PonXML strXML, "Default", strDefault
+    PonXML strXML, "InputMask", strInputMask
+    PonXML strXML, "TextoEnriquecido", IIf(intTextoEnriquecido, "S", "N")
+    PonXML strXML, "EditarSN", IIf(intAllowEdit, "S", "N")
+    PonXML strXML, "OK_caption", strOKcaption
+    PonXML strXML, "Cancel_Caption", strCancelCaption
+    PonXML strXML, "FontName", strFontName
+    PonXML strXML, "AdjuntarFicheros", strAdjuntarFicheros
+    DoCmd.OpenForm "frmInputBox", , , , , acDialog, strXML
+    If Not IsOpenForm("frmInputBox") Then
+        MyInputBox = Null
+        GoTo Salir_MyInputBox
+    End If
+    MyInputBox = Forms("frmInputBox")("txtIntro")
+    strAdjuntarFicheros = Forms("frmInputBox")("lstAdjuntarFicheros").RowSource
+    DoCmd.Close acForm, "frmInputBox"
+Salir_MyInputBox:
+    Exit Function
+Error_MyInputBox:
+    Select Case Err
+        Case Else
+            MBox "Error nº " & Err & " en MyInputBox" & vbCrLf & Err.Description
+            Resume Salir_MyInputBox
+    End Select
+
+End Function
+
+Public Function MBox(Prompt, Optional Buttons As VbMsgBoxStyle = vbOKOnly, Optional Title, Optional HelpFile, Optional Context) As Integer
+    If IsMissing(Title) Then Title = Nz(DameValorParam("AplicacionTitulo"), "R4")
+    MBox = MsgBox(Prompt, Buttons, Title, HelpFile, Context)
+End Function

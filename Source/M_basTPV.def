@@ -1,0 +1,1163 @@
+Option Compare Database
+Option Explicit
+
+
+Public Sub PonTotalTique(lngIdTickCab As Long, Optional lngIdTickDet As Long = 0, Optional db As Database = Nothing, Optional intFacturaNo As Integer = False)
+    On Error GoTo Error_PonTotalTique
+    Dim rs As Recordset, strSQL As String
+    Dim curTotal As Currency, vcurIVA_cab As Variant
+    Dim curBase As Currency, curB As Currency, curT As Currency, curI As Currency, curTotalIVA As Currency
+    Dim intPrimero As Integer, intIvaInc As Integer
+    strSQL = "SELECT tbTickCab.*, tbTickDet.*"
+    strSQL = strSQL & " FROM tbTickCab INNER JOIN tbTickDet ON tbTickCab.IdTickCab = tbTickDet.IdTickCab"
+    If lngIdTickDet = 0 Then
+        strSQL = strSQL & " WHERE (((tbTickDet.IdTickCab)=" & lngIdTickCab & "));"
+    Else
+        strSQL = strSQL & " WHERE (((tbTickDet.IdTickDet)=" & lngIdTickDet & "));"
+    End If
+    If db Is Nothing Then Set db = CurrentDb
+    Set rs = db.OpenRecordset(strSQL, dbOpenSnapshot)
+    If Not rs.EOF Then
+        intIvaInc = rs("IvaInc_Det")
+    End If
+    If lngIdTickDet = 0 Then
+        intPrimero = True
+        vcurIVA_cab = 0
+        curTotal = 0
+        curTotalIVA = 0
+        curBase = 0
+    Else
+        intPrimero = False
+        vcurIVA_cab = DLookup("IVA_Cab", "tbTickCab", "IdTickCab = " & lngIdTickCab)
+        curTotal = Nz(DLookup("TotalTicket", "tbTickCab", "IdTickCab = " & lngIdTickCab), 0)
+        curBase = Nz(DLookup("TotalBase", "tbTickCab", "IdTickCab = " & lngIdTickCab), 0)
+        curTotalIVA = Nz(DLookup("TotalIVA", "tbTickCab", "IdTickCab = " & lngIdTickCab), 0)
+    End If
+    While Not rs.EOF
+        If intPrimero Then
+            vcurIVA_cab = rs("IVA")
+            intPrimero = False
+        End If
+        If vcurIVA_cab <> rs("IVA") Then vcurIVA_cab = Null
+        If intIvaInc = True Then
+            curT = rs("Cantidad") * rs("Precio")
+            curB = rs("Cantidad") * rs("Precio") / (1 + rs("IVA"))
+        Else
+            curT = rs("Cantidad") * rs("Precio") * (1 + rs("IVA"))
+            curB = rs("Cantidad") * rs("Precio")
+        End If
+        curI = curB * rs("IVA")
+        curTotal = curTotal + curT
+        curBase = curBase + curB
+        curTotalIVA = curTotalIVA + curI
+        rs.MoveNext
+    Wend
+    strSQL = "UPDATE tbTickCab SET tbTickCab.TotalTicket = " & ComaPunto(Round(curTotal, 2)) & _
+            ", tbTickCab.IVA_Cab = " & IIf(IsNull(vcurIVA_cab), "Null", ComaPunto(Nz(vcurIVA_cab, ""))) & _
+            ", tbTickCab.TotalBase = " & ComaPunto(curBase) & _
+            ", tbTickCab.TotalIVA = " & ComaPunto(curTotalIVA)
+    strSQL = strSQL & " WHERE (((tbTickCab.IdTickCab)=" & lngIdTickCab & "));"
+    db.Execute strSQL, dbFailOnError
+    If intFacturaNo = True Then GoTo Salir_PonTotalTique
+    'Si el tique está facturado y no coincide el total de factura, volveer a facturar....
+    Dim v As Variant, intR As Integer
+    v = Nz(DLookup("IdFactura", "tbTickCab", "IdTickCab = " & lngIdTickCab), 0)
+    If v > 0 Then
+        If DLookup("Imprimida", "tbFacturasCab", "IdFactura = " & v) = False Then GoTo GenerarFactura
+        If Abs(Nz(DLookup("TotalBase + TotalIVA", "tbFacturasCab", "IdFactura = " & v), 0) - curTotal) >= 0.015 Then
+            intR = MBox("¿Modificar Factura de igual manera que el Tique?", vbYesNo + vbQuestion)
+            If intR = vbYes Then
+                strSQL = "UPDATE tbFacturasCab SET Imprimida=False WHERE IdFactura = " & v
+                db.Execute strSQL, dbFailOnError
+GenerarFactura:
+                strSQL = "SELECT * FROM tbTickCab"
+                strSQL = strSQL & " WHERE IdFactura = " & v
+                strSQL = strSQL & " ORDER BY IdTickCab"
+                Set rs = db.OpenRecordset(strSQL, dbOpenSnapshot)
+                Dim intPrimer As Integer
+                intPrimer = True
+                While Not rs.EOF
+                    If intPrimer = True Then
+                        FacturarTicket rs("IdTickCab"), , CLng(v), , , db.Name
+                        intPrimer = False
+                    Else
+                        FacturarTicket rs("IdTickCab"), , CLng(v), True, , db.Name
+                    End If
+                    rs.MoveNext
+                Wend
+            End If
+        End If
+    End If
+Salir_PonTotalTique:
+    Exit Sub
+Error_PonTotalTique:
+    Select Case Err
+        Case Else
+            MBox "Error nº " & Err & " en PonTotalTique" & vbCrLf & Err.Description
+            Resume Salir_PonTotalTique
+            Resume Next
+    End Select
+End Sub
+
+Public Sub PrecioArtV(lngIdArtV As Long, lngIdTickCab As Long, ByRef curPrecio As Currency, ByRef curIVA As Currency)
+    On Error GoTo Error_PrecioArtV
+    Dim lngIdTrf As Long, lngIdTrf_Prdt As Long, lngTipoIVA As Long
+    lngIdTrf = Nz(DLookup("IdTrf", "tbTickCab", "IdTickCab = " & lngIdTickCab), 0)
+    lngIdTrf_Prdt = Nz(DLookup("IdTrf", "tbTipTrf", "Predet = True"), 0)
+    If lngIdTrf = 0 Then lngIdTrf = lngIdTrf_Prdt
+    curPrecio = Nz(DLookup("PrecioU", "tbArtV_Trf", "IdTrf = " & lngIdTrf & " AND IdArtV = " & lngIdArtV), 0)
+    lngTipoIVA = Nz(DLookup("TipoIVA", "tbArtV", "IdArtV = " & lngIdArtV), 0)
+    curIVA = Nz(DLookup("IVA", "tbTipIVA", "TipoIVA = " & lngTipoIVA), 0)
+    Dim intIvaInc As Integer
+    intIvaInc = Nz(DLookup("IvaInc_Det", "tbTickCab", "IdTickCab = " & lngIdTickCab), True)
+    If intIvaInc <> DameValorParam("ArticulosPreciosIVAIncluidoSN") Then
+        If intIvaInc = True Then
+            curPrecio = curPrecio * (1 + curIVA)
+        Else
+            curPrecio = curPrecio / (1 + curIVA)
+        End If
+    End If
+Salir_PrecioArtV:
+    Exit Sub
+Error_PrecioArtV:
+    Select Case Err
+        Case Else
+            MBox "Error nº " & Err & " en PrecioArtV" & vbCrLf & Err.Description
+            Resume Salir_PrecioArtV
+    End Select
+End Sub
+
+Public Sub PonPrecioTick(intCab_Det As Integer, lngId As Long, Optional curPrecioFijo As Currency = -1000.1234, Optional db As Database = Nothing)
+    On Error GoTo Error_PonPrecioTick
+    Dim strSQL As String, lngIdTickCab As Long, rs As Recordset, rsCab As Recordset
+    Dim lngTipoIVA As Long, lngIdTrf As Long
+    Dim intIvaInc_Det As Integer, intIvaInc_Pre As Integer, intIvaInc_Pre_x_ArtSN As Integer
+    Dim curIVA As Currency, curRE As Currency, curPre As Currency, intRecEqSN As Integer
+    Dim curIVAs() As Currency, curREs() As Currency, rsI As Recordset
+    If db Is Nothing Then Set db = CurrentDb
+    strSQL = "SELECT tbTickDet.*, Nz(tbTickDet_Notas.Suplemento,0) as Supl"
+    strSQL = strSQL & " FROM tbTickDet LEFT JOIN tbTickDet_Notas ON tbTickDet.IdTickDet=tbTickDet_Notas.IdTickDet"
+    If intCab_Det = 1 Then
+        strSQL = strSQL & " WHERE tbTickDet.IdTickCab = " & lngId
+        lngIdTickCab = lngId
+    Else
+        strSQL = strSQL & " WHERE tbTickDet.IdTickDet = " & lngId
+        lngIdTickCab = DLookup("IdTickCab", "tbTickDet", "IdTickDet = " & lngId)
+    End If
+    Set rs = db.OpenRecordset(strSQL, dbOpenDynaset)
+    If Not rs.EOF Then
+        Set rsCab = db.OpenRecordset("tbTickCab", dbOpenSnapshot)
+        rsCab.FindFirst "IdTickCab = " & rs("IdTickCab")
+        If rsCab.NoMatch Then
+            MBox "No se encontró Tique de Cabecera, IdTickCab = " & rs("IdTickCab")
+            Exit Sub
+        End If
+        intIvaInc_Det = rsCab("IvaInc_Det")
+        lngIdTrf = rsCab("IdTrf")
+    End If
+    'carga curIVAs.............................
+    '
+    intRecEqSN = Nz(DLookup("RecEqSN", "tbTickCab_Cli", "IdTickCab = " & lngIdTickCab), False)
+    Dim intMin As Integer, intMax As Integer
+    intMin = Nz(DMin("TipoIVA", "tbTipIVA"), 0)
+    intMax = Nz(DMax("TipoIVA", "tbTipIVA"), 0)
+    ReDim curIVAs(0 To intMax)
+    ReDim curREs(0 To intMax)
+    Set rsI = db.OpenRecordset("tbTipIVA", dbOpenSnapshot)
+    While Not rsI.EOF
+        curIVAs(rsI("TipoIVA")) = rsI("IVA")
+        If intRecEqSN Then curREs(rsI("TipoIVA")) = rsI("RecargoEquivalencia")
+        rsI.MoveNext
+    Wend
+    Set rsI = Nothing
+    'fin carga curIVAs.........................
+    Select Case Nz(DameValorParam("ArticulosPreciosIVAIncluidoSNTS"), 0)
+        Case 1
+            intIvaInc_Pre = True
+        Case 2
+            intIvaInc_Pre = False
+        Case 3
+            intIvaInc_Pre = Nz(DLookup("IvaIncluidoSN", "tbTipTrf", "IdTrf = " & lngIdTrf), 2)
+        Case Else
+            intIvaInc_Pre_x_ArtSN = True
+    End Select
+    While Not rs.EOF
+        If curPrecioFijo = -1000.1234 Then
+            curPre = Nz(DLookup("PrecioU", "tbArtV_Trf", "IdTrf = " & lngIdTrf & " AND IdArtV = " & rs("IdArtV")), 0)
+        Else
+            curPre = curPrecioFijo
+        End If
+        lngTipoIVA = Nz(DLookup("TipoIVA", "tbArtV", "IdArtV = " & rs("IdArtV")), 0)
+        'curIVA = Nz(DLookup(IIf(Not intRecEqSN, "IVA", "[IVA] + [RecargoEquivalencia]"), "tbTipIVA", "TipoIVA = " & lngTipoIVA), 0)
+        curIVA = curIVAs(lngTipoIVA)
+        curRE = curREs(lngTipoIVA)
+        If rs("InvitacionSN") = True Then
+            curPre = 0
+            GoTo Grabar
+        End If
+        If intIvaInc_Pre_x_ArtSN = True Then
+            intIvaInc_Pre = Nz(DLookup("PreciosIvaIncluidoSN", "qryArtV_IvaIncSN", "IdArtV = " & rs("IdArtV")), 2)
+        End If
+        curPre = curPre + rs("Supl")
+        If intIvaInc_Det <> intIvaInc_Pre Then
+            If intIvaInc_Det = True Then
+                curPre = curPre * (1 + curIVA + curRE)
+            Else
+                curPre = curPre / (1 + curIVA + curRE)
+            End If
+        End If
+Grabar:
+        rs.Edit
+        rs("Precio") = curPre
+        rs("IVA") = curIVA
+        rs("RecEq") = curRE
+        rs.Update
+        rs.MoveNext
+    Wend
+Salir_PonPrecioTick:
+    Exit Sub
+Error_PonPrecioTick:
+    Select Case Err
+        Case Else
+            MBox "Error nº " & Err & " en PonPrecioTick" & vbCrLf & Err.Description
+            Resume Salir_PonPrecioTick
+            Resume Next
+    End Select
+End Sub
+
+Public Sub PonPrecioTickOLD(intCab_Det As Integer, lngId As Long, Optional curPrecioFijo As Currency = -1000.1234, Optional db As Database = Nothing)
+    On Error GoTo Error_PonPrecioTickOLD
+    Dim strSQL As String, lngIdTickCab As Long, rs As Recordset, rsCab As Recordset
+    Dim lngTipoIVA As Long, lngIdTrf As Long
+    Dim intIvaInc_Det As Integer, intIvaInc_Pre As Integer, intIvaInc_Pre_x_ArtSN As Integer
+    Dim curIVA As Currency, curPre As Currency
+    If db Is Nothing Then Set db = CurrentDb
+    strSQL = "SELECT tbTickDet.*, Nz(tbTickDet_Notas.Suplemento,0) as Supl"
+    strSQL = strSQL & " FROM tbTickDet LEFT JOIN tbTickDet_Notas ON tbTickDet.IdTickDet=tbTickDet_Notas.IdTickDet"
+    If intCab_Det = 1 Then
+        strSQL = strSQL & " WHERE tbTickDet.IdTickCab = " & lngId
+        lngIdTickCab = lngId
+    Else
+        strSQL = strSQL & " WHERE tbTickDet.IdTickDet = " & lngId
+        lngIdTickCab = DLookup("IdTickCab", "tbTickDet", "IdTickDet = " & lngId)
+    End If
+    Set rs = db.OpenRecordset(strSQL, dbOpenDynaset)
+    If Not rs.EOF Then
+        'Set rsCab = db.OpenRecordset("tbTickCab", dbOpenSnapshot)
+        Set rsCab = db.OpenRecordset("SELECT * FROM tbTickCab WHERE IdTickCab = " & rs("IdTickCab"), dbOpenSnapshot)
+        'rsCab.FindFirst "IdTickCab = " & rs("IdTickCab")
+        'If rsCab.NoMatch Then
+        If rsCab.EOF Then
+            MBox "No se encontró Tique de Cabecera, IdTickCab = " & rs("IdTickCab")
+            Exit Sub
+        End If
+        intIvaInc_Det = rsCab("IvaInc_Det")
+        lngIdTrf = rsCab("IdTrf")
+    End If
+    
+    Select Case Nz(DameValorParam("ArticulosPreciosIVAIncluidoSNTS"), 0)
+        Case 1
+            intIvaInc_Pre = True
+        Case 2
+            intIvaInc_Pre = False
+        Case 3
+            intIvaInc_Pre = Nz(DLookup("IvaIncluidoSN", "tbTipTrf", "IdTrf = " & lngIdTrf), 2)
+        Case Else
+            intIvaInc_Pre_x_ArtSN = True
+    End Select
+    While Not rs.EOF
+        If curPrecioFijo = -1000.1234 Then
+            curPre = Nz(DLookup("PrecioU", "tbArtV_Trf", "IdTrf = " & lngIdTrf & " AND IdArtV = " & rs("IdArtV")), 0)
+        Else
+            curPre = curPrecioFijo
+        End If
+        lngTipoIVA = Nz(DLookup("TipoIVA", "tbArtV", "IdArtV = " & rs("IdArtV")), 0)
+        curIVA = Nz(DLookup("IVA", "tbTipIVA", "TipoIVA = " & lngTipoIVA), 0)
+        If rs("InvitacionSN") = True Then
+            curPre = 0
+            GoTo Grabar
+        End If
+        If intIvaInc_Pre_x_ArtSN = True Then
+            intIvaInc_Pre = Nz(DLookup("PreciosIvaIncluidoSN", "qryArtV_IvaIncSN", "IdArtV = " & rs("IdArtV")), 2)
+        End If
+        curPre = curPre + rs("Supl")
+        If intIvaInc_Det <> intIvaInc_Pre Then
+            If intIvaInc_Det = True Then
+                curPre = curPre * (1 + curIVA)
+            Else
+                curPre = curPre / (1 + curIVA)
+            End If
+        End If
+Grabar:
+        rs.Edit
+        rs("Precio") = curPre
+        rs("IVA") = curIVA
+        rs.Update
+        rs.MoveNext
+    Wend
+Salir_PonPrecioTickOLD:
+    Exit Sub
+Error_PonPrecioTickOLD:
+    Select Case Err
+        Case Else
+            MBox "Error nº " & Err & " en PonPrecioTickOLD" & vbCrLf & Err.Description
+            Resume Salir_PonPrecioTickOLD
+            Resume Next
+    End Select
+End Sub
+Public Sub BotonesEspScr()
+    Dim strSQL As String, rs1 As Recordset, rs2 As Recordset
+    Dim lngIdBoxCab As Long, i As Integer, j As Integer, intOtras As Integer
+    strSQL = "SELECT tbEspScr.IdEspScr, tbEspScr.IdBoton"
+    strSQL = strSQL & " FROM tbEspScr"
+    strSQL = strSQL & " WHERE (((tbEspScr.Ver) = True))"
+    strSQL = strSQL & " ORDER BY tbEspScr.Orden;"
+    lngIdBoxCab = Nz(DLookup("IdBoxCab", "tbsysBoxCab", "CodBoxCab='004'"), 0)
+    If lngIdBoxCab = 0 Then
+        MBox "No se encontró CodBoxCab = 004"
+        Exit Sub
+    End If
+    CurrentDb.Execute "DELETE * FROM tbsysBoxDet WHERE IdBoxCab = " & lngIdBoxCab, dbFailOnError
+    Set rs2 = CurrentDb.OpenRecordset("tbsysBoxDet", dbOpenDynaset)
+    Set rs1 = CurrentDb.OpenRecordset(strSQL, dbOpenSnapshot)
+    While Not rs1.EOF
+        i = i + 1
+        rs2.AddNew
+        rs2("IdBoxCab") = lngIdBoxCab
+        rs2("Orden") = i
+        rs2("IdBoton") = rs1("IdBoton")
+        If intOtras = False Then
+            rs2("ValorOpcion") = CStr(rs1("IdEspScr")) 'numérico
+        Else
+            rs2("ValorOpcion") = (rs1("Serie")) 'texto
+        End If
+        rs2("OK_SN") = True
+        rs2("Cancel_SN") = False
+        rs2("Col") = i
+        If intOtras = False Then
+            rs2("Fil") = 1
+        Else
+            rs2("Fil") = 1
+        End If
+        rs2.Update
+        rs1.MoveNext
+    Wend
+    i = i + 1
+    rs2.AddNew
+    rs2("IdBoxCab") = lngIdBoxCab
+    rs2("Orden") = i
+    rs2("IdBoton") = 4
+    rs2("ValorOpcion") = ""
+    rs2("OK_SN") = False
+    rs2("Cancel_SN") = True
+    rs2("Col") = i
+    rs2("Fil") = 1
+    rs2.Update
+    CurrentDb.Execute "UPDATE tbsysBoxCab SET Filas = 1, Columnas = " & i & " WHERE IdBoxCab = " & lngIdBoxCab, dbFailOnError
+    
+End Sub
+
+Public Sub LugaresSinTicket()
+    Dim strSQL As String, rs1 As Recordset, rs2 As Recordset
+    Dim lngIdBoxCab As Long, i As Integer
+    strSQL = "SELECT *"
+    strSQL = strSQL & " FROM sys_qryLugaresSinTicketPendiente"
+    lngIdBoxCab = Nz(DLookup("IdBoxCab", "tbsysBoxCab", "CodBoxCab='003'"), 0)
+    If lngIdBoxCab = 0 Then
+        MBox "No se encontró CodBoxCab = 003"
+        Exit Sub
+    End If
+    CurrentDb.Execute "DELETE * FROM tbsysBoxDet WHERE IdBoxCab = " & lngIdBoxCab, dbFailOnError
+    Set rs1 = CurrentDb.OpenRecordset(strSQL, dbOpenSnapshot)
+    Set rs2 = CurrentDb.OpenRecordset("tbsysBoxDet", dbOpenDynaset)
+    
+    While Not rs1.EOF
+        i = i + 1
+        rs2.AddNew
+        rs2("IdBoxCab") = lngIdBoxCab
+        rs2("Orden") = i
+        rs2("IdBoton") = rs1("IdBoton")
+        rs2("ValorOpcion") = CStr(rs1("IdBarm"))
+        rs2("OK_SN") = True
+        rs2("Cancel_SN") = False
+        rs2("Col") = i
+        rs2("Fil") = 1
+        rs2.Update
+        rs1.MoveNext
+    Wend
+    i = i + 1
+    rs2.AddNew
+    rs2("IdBoxCab") = lngIdBoxCab
+    rs2("Orden") = i
+    rs2("IdBoton") = 44
+    rs2("ValorOpcion") = "Camar_on-off"
+    rs2("OK_SN") = True
+    rs2("Cancel_SN") = False
+    rs2("Col") = i
+    rs2("Fil") = 1
+    rs2.Update
+    i = i + 1
+    rs2.AddNew
+    rs2("IdBoxCab") = lngIdBoxCab
+    rs2("Orden") = i
+    rs2("IdBoton") = 4
+    rs2("ValorOpcion") = ""
+    rs2("OK_SN") = False
+    rs2("Cancel_SN") = True
+    rs2("Col") = i
+    rs2("Fil") = 1
+    rs2.Update
+    CurrentDb.Execute "UPDATE tbsysBoxCab SET Columnas = " & i & " WHERE IdBoxCab = " & lngIdBoxCab
+    
+End Sub
+
+Public Sub BotonesTarifas()
+    Dim strSQL As String, rs1 As Recordset, rs2 As Recordset
+    Dim lngIdBoxCab As Long, i As Integer
+    strSQL = "SELECT tbTipTrf.IdTrf, tbTipTrf.IdBoton"
+    strSQL = strSQL & " FROM tbTipTrf"
+    'strSQl = strSQl & " WHERE (((tbTipTrf.Activo) = True))"
+    'strSQl = strSQl & " ORDER BY tbTipTrf.Orden;"
+    lngIdBoxCab = Nz(DLookup("IdBoxCab", "tbsysBoxCab", "CodBoxCab='006'"), 0)
+    If lngIdBoxCab = 0 Then
+        MBox "No se encontró CodBoxCab = 006"
+        Exit Sub
+    End If
+    CurrentDb.Execute "DELETE * FROM tbsysBoxDet WHERE IdBoxCab = " & lngIdBoxCab, dbFailOnError
+    Set rs1 = CurrentDb.OpenRecordset(strSQL, dbOpenSnapshot)
+    Set rs2 = CurrentDb.OpenRecordset("tbsysBoxDet", dbOpenDynaset)
+    
+    While Not rs1.EOF
+        i = i + 1
+        rs2.AddNew
+        rs2("IdBoxCab") = lngIdBoxCab
+        rs2("Orden") = i
+        rs2("IdBoton") = rs1("IdBoton")
+        rs2("ValorOpcion") = CStr(rs1("IdTrf"))
+        rs2("OK_SN") = True
+        rs2("Cancel_SN") = False
+        rs2("Col") = i
+        rs2("Fil") = 1
+        rs2.Update
+        rs1.MoveNext
+    Wend
+    i = i + 1
+    rs2.AddNew
+    rs2("IdBoxCab") = lngIdBoxCab
+    rs2("Orden") = i
+    rs2("IdBoton") = 66
+    rs2("ValorOpcion") = "cancel"
+    rs2("OK_SN") = False
+    rs2("Cancel_SN") = True
+    rs2("Col") = i
+    rs2("Fil") = 1
+    rs2.Update
+    CurrentDb.Execute "UPDATE tbsysBoxCab SET Columnas = " & i & " WHERE IdBoxCab = " & lngIdBoxCab
+    
+End Sub
+
+
+
+Public Sub BotonesTiposTiques()
+    Dim strSQL As String, rs1 As Recordset, rs2 As Recordset
+    Dim lngIdBoxCab As Long, i As Integer
+    strSQL = "SELECT tbTipTick.CodTipTick, tbTipTick.IdBoton"
+    strSQL = strSQL & " FROM tbTipTick"
+    strSQL = strSQL & " WHERE tbTipTick.Operacion Is Null"
+    'strSQl = strSQl & " WHERE (((tbTipTrf.Activo) = True))"
+    'strSQl = strSQl & " ORDER BY tbTipTrf.Orden;"
+    lngIdBoxCab = Nz(DLookup("IdBoxCab", "tbsysBoxCab", "CodBoxCab='009'"), 0)
+    If lngIdBoxCab = 0 Then
+        MBox "No se encontró CodBoxCab = 009"
+        Exit Sub
+    End If
+    CurrentDb.Execute "DELETE * FROM tbsysBoxDet WHERE IdBoxCab = " & lngIdBoxCab, dbFailOnError
+    Set rs1 = CurrentDb.OpenRecordset(strSQL, dbOpenSnapshot)
+    Set rs2 = CurrentDb.OpenRecordset("tbsysBoxDet", dbOpenDynaset)
+    
+    While Not rs1.EOF
+        i = i + 1
+        rs2.AddNew
+        rs2("IdBoxCab") = lngIdBoxCab
+        rs2("Orden") = i
+        rs2("IdBoton") = rs1("IdBoton")
+        rs2("ValorOpcion") = CStr(rs1("CodTipTick"))
+        rs2("OK_SN") = True
+        rs2("Cancel_SN") = False
+        rs2("Col") = i
+        rs2("Fil") = 1
+        rs2.Update
+        rs1.MoveNext
+    Wend
+    i = i + 1
+    rs2.AddNew
+    rs2("IdBoxCab") = lngIdBoxCab
+    rs2("Orden") = i
+    rs2("IdBoton") = 66
+    rs2("ValorOpcion") = "cancel"
+    rs2("OK_SN") = False
+    rs2("Cancel_SN") = True
+    rs2("Col") = i
+    rs2("Fil") = 1
+    rs2.Update
+    CurrentDb.Execute "UPDATE tbsysBoxCab SET Columnas = " & i & " WHERE IdBoxCab = " & lngIdBoxCab
+    
+End Sub
+
+Public Function DimeTotalTique(lngIdTickCab As Long, Optional db As Database = Nothing) As Currency
+    On Error GoTo Error_DimeTotalTique
+    Dim rs As Recordset, strSQL As String
+    Dim curTotal As Currency, vcurIVA_cab As Variant
+    Dim curBase As Currency, curB As Currency, curT As Currency
+    Dim intPrimero As Integer, intIvaInc As Integer
+    strSQL = "SELECT tbTickCab.TotalTicket"
+    strSQL = strSQL & " FROM tbTickCab"
+    strSQL = strSQL & " WHERE (((tbTickCab.IdTickCab)=" & lngIdTickCab & "));"
+    If db Is Nothing Then Set db = CurrentDb
+    Set rs = db.OpenRecordset(strSQL, dbOpenSnapshot)
+    If Not rs.EOF Then
+        curTotal = rs("TotalTicket")
+    End If
+    DimeTotalTique = curTotal
+Salir_DimeTotalTique:
+    Exit Function
+Error_DimeTotalTique:
+    Select Case Err
+        Case Else
+            MBox "Error nº " & Err & " en DimeTotalTique" & vbCrLf & Err.Description
+            Resume Salir_DimeTotalTique
+            Resume Next
+    End Select
+End Function
+
+
+Public Sub Pon_SubTotalTicket(lngIdTickCab As Long, lngIdArtV As Long, Optional intDesdeOrd As Integer = 0, Optional intHastaOrd As Integer = 0)
+    On Error GoTo Error_Pon_SubTotalTicket
+    Dim rs As Recordset, strSQL As String
+    Dim curBase As Currency, curB As Currency, curT As Currency
+    Dim intOrden As Integer, intIvaInc As Integer, lngIdTickDet As Long
+    Dim curIVAs() As Currency
+    Dim curBases() As Currency, i As Integer, j As Integer
+    strSQL = "SELECT * FROM tbTipIVA"
+    Set rs = CurrentDb.OpenRecordset(strSQL, dbOpenSnapshot)
+    If Not rs.EOF Then
+        rs.MoveLast
+        rs.MoveFirst
+    End If
+    ReDim curIVAs(rs.RecordCount - 1)
+    ReDim curBases(rs.RecordCount - 1)
+    While Not rs.EOF
+        curIVAs(i) = rs("IVA")
+        i = i + 1
+        rs.MoveNext
+    Wend
+    strSQL = "SELECT tbTickDet.*"
+    strSQL = strSQL & " FROM tbTickDet"
+    strSQL = strSQL & " WHERE tbTickDet.IdTickCab=" & lngIdTickCab
+    If intDesdeOrd <> 0 Then
+        strSQL = strSQL & " AND tbTickDet.Orden>" & intDesdeOrd
+    End If
+    If intHastaOrd <> 0 Then
+        strSQL = strSQL & " AND tbTickDet.Orden<" & intHastaOrd
+    End If
+    strSQL = strSQL & " ORDER BY Orden"
+    Set rs = CurrentDb.OpenRecordset(strSQL, dbOpenDynaset)
+    If Not rs.EOF Then
+        intIvaInc = Nz(DLookup("IvaInc_Det", "tbTickCab", "IdTickCab = " & rs("IdTickCab")), True)
+    End If
+    i = 0
+    While Not rs.EOF
+        If curIVAs(i) <> rs("IVA") Then
+            i = 0
+            While Not curIVAs(i) = rs("IVA")
+                i = i + 1
+                If i > UBound(curIVAs) Then
+                    MBox "Se encontró un tipo de IVA no correcto"
+                    GoTo Siguiente
+                End If
+            Wend
+        End If
+        If intIvaInc = True Then
+            curB = rs("Cantidad") * rs("Precio") / (1 + rs("IVA"))
+        Else
+            curB = rs("Cantidad") * rs("Precio")
+        End If
+        curBases(i) = curBases(i) + curB
+        rs.Edit
+        rs("Precio") = 0
+        rs.Update
+Siguiente:
+        intOrden = rs("Orden")
+        rs.MoveNext
+    Wend
+    ' borrar subtotales anteriores
+    strSQL = "DELETE tbTickDet.*"
+    strSQL = strSQL & " FROM tbTickDet INNER JOIN tbTickDet_Notas ON tbTickDet.IdTickDet = tbTickDet_Notas.IdTickDet"
+    strSQL = strSQL & " WHERE tbTickDet.IdTickCab=" & lngIdTickCab & " AND tbTickDet_Notas.Nota='Subtotal Auto'"
+    If intDesdeOrd <> 0 Then
+        strSQL = strSQL & " AND tbTickDet.Orden>" & intDesdeOrd
+    End If
+    If intHastaOrd <> 0 Then
+        strSQL = strSQL & " AND tbTickDet.Orden<" & intHastaOrd
+    End If
+    CurrentDb.Execute strSQL, dbFailOnError
+    i = 0
+    Set rs = CurrentDb.OpenRecordset("tbTickDet", dbOpenDynaset)
+    While i <= UBound(curIVAs)
+        If curBases(i) <> 0 Then j = j + 1
+        i = i + 1
+    Wend
+    i = 0
+    While i <= UBound(curIVAs)
+        If curBases(i) = 0 Then
+        Else
+            rs.AddNew
+            rs("IdTickCab") = lngIdTickCab
+            rs("IdArtV") = lngIdArtV
+            rs("Concepto") = RecDerTop(IIf(j > 1, Format(curIVAs(i), "percent") & " ", "") & Nz(DLookup("TxtTicket", "tbArtV", "IdArtV = " & lngIdArtV), "Subtotal"), 0, 30)
+            rs("IVA") = curIVAs(i)
+            If intIvaInc = True Then
+                rs("Precio") = curBases(i) * (1 + curIVAs(i))
+            Else
+                rs("Precio") = curBases(i)
+            End If
+            rs("Cantidad") = 1
+            rs("Orden") = intOrden + 1
+            lngIdTickDet = rs("IdTickDet")
+            rs.Update
+            strSQL = "INSERT INTO tbTickDet_Notas ( Nota, IdTickDet )"
+            strSQL = strSQL & " SELECT 'Subtotal Auto' AS Expr1, " & lngIdTickDet & " AS Expr2;"
+            CurrentDb.Execute strSQL, dbFailOnError
+        End If
+        i = i + 1
+    Wend
+    Reordenar "tbTickDet", "Orden", "IdTickCab = " & lngIdTickCab, 2
+Salir_Pon_SubTotalTicket:
+    Exit Sub
+Error_Pon_SubTotalTicket:
+    Select Case Err
+        Case Else
+            MBox "Error nº " & Err & " en Pon_SubTotalTicket" & vbCrLf & Err.Description
+            Resume Salir_Pon_SubTotalTicket
+            Resume Next
+    End Select
+End Sub
+
+Public Sub CopiaDetalleTicket(lngIdTickCab As Long, lngNewIdTickCab As Long, Optional strTipoNuevo As String = "")
+    Dim strSQL As String, rs0 As Recordset, rs1 As Recordset, rs2 As Recordset, rs3 As Recordset, i As Integer
+    Dim lngIdTickDet As Long
+    On Error GoTo Error_CopiaDetalleTicket
+    strSQL = "SELECT tbTickDet.*, tbTickDet_Notas.Nota"
+    strSQL = strSQL & " FROM tbTickDet LEFT JOIN tbTickDet_Notas ON tbTickDet.IdTickDet = tbTickDet_Notas.IdTickDet"
+    strSQL = strSQL & " WHERE IdTickCab = " & lngIdTickCab
+    Set rs0 = CurrentDb.OpenRecordset(strSQL, dbOpenSnapshot)
+    Set rs1 = CurrentDb.OpenRecordset("tbTickDet", dbOpenDynaset)
+    Set rs2 = CurrentDb.OpenRecordset("tbTickDet_Notas", dbOpenDynaset)
+    Set rs3 = CurrentDb.OpenRecordset("tbTickCab_Cli", dbOpenDynaset)
+    While Not rs0.EOF
+        rs1.AddNew
+        rs1("IdTickCab") = lngNewIdTickCab
+        For i = 2 To rs0.Fields.Count - 2
+            rs1(i) = rs0(i)
+        Next i
+        lngIdTickDet = rs1("IdTickDet")
+        rs1.Update
+        If Not IsNull(rs0("Nota")) Then
+            rs2.AddNew
+            rs2("IdTickDet") = lngIdTickDet
+            rs2("Nota") = rs0("Nota")
+            rs2.Update
+        End If
+        rs0.MoveNext
+    Wend
+    'PonTotalTique lngNewIdTickCab
+    strSQL = "SELECT * FROM tbTickCab_Cli WHERE IdTickCab = " & lngIdTickCab
+    Set rs0 = CurrentDb.OpenRecordset(strSQL, dbOpenSnapshot)
+    If Not rs0.EOF Then
+        rs3.AddNew
+        rs3("IdTickCab") = lngNewIdTickCab
+        rs3(1) = rs0(1)
+        rs3(2) = rs0(2)
+        rs3(3) = rs0(3)
+        rs3.Update
+    End If
+    If DLookup("Serie", "tbTickCab", "IdTickCab = " & lngNewIdTickCab) = "Q" Then
+        rs3.FindFirst "IdTickCab = " & lngNewIdTickCab
+        If rs3.NoMatch Then
+            rs3.AddNew
+            rs3("IdTickCab") = lngNewIdTickCab
+        Else
+            rs3.Edit
+        End If
+        rs3("PedidoSN") = True
+        rs3.Update
+    End If
+Salir_CopiaDetalleTicket:
+    Exit Sub
+Error_CopiaDetalleTicket:
+    Select Case Err
+        Case Else
+            MBox "Error nº " & Err & " en CopiaDetalleTicket" & vbCrLf & Err.Description
+            Resume Salir_CopiaDetalleTicket
+            Resume Next
+    End Select
+End Sub
+
+Public Function GrabarLineaBorrada(lngIdTickCabDet As Long, intCabDet As Integer, strMDB As String, Optional lngIdBarm As Long = 0) As Integer
+    Dim rs As Recordset, strSQL As String, rsLB As Recordset, i As Integer, j As Integer
+    Dim db As Database
+    On Error GoTo Error_GrabarLineaBorrada
+    If Nz(DameValorParam("PermisosGrabarLineasBorradasSN"), False) = False Then GoTo OK
+    strSQL = "SELECT tbTickCab.IdTickCab, tbTickDet.IdTickDet, tbTickCab.NumTicket, tbTickCab.Serie, tbTickDet.Cantidad, tbTickDet.Concepto, tbTickDet.Precio, tbTickDet.IVA, tbTickDet.RecEq, tbTickDet.Comanda"
+    strSQL = strSQL & " FROM tbTickCab INNER JOIN tbTickDet ON tbTickCab.IdTickCab = tbTickDet.IdTickCab"
+    If intCabDet = 1 Then
+        strSQL = strSQL & " WHERE tbTickCab.IdTickCab=" & lngIdTickCabDet
+    Else
+        strSQL = strSQL & " WHERE tbTickDet.IdTickDet=" & lngIdTickCabDet
+    End If
+    If strMDB = "" Or strMDB = "Current" Then
+        Set db = CurrentDb
+    Else
+        Set db = OpenDatabase(strMDB)
+    End If
+    Set rs = db.OpenRecordset(strSQL, dbOpenSnapshot)
+    If rs.EOF Then GoTo OK
+    Set rsLB = db.OpenRecordset("tbLineasBorradas", dbOpenDynaset)
+    If lngIdBarm = 0 Then
+        Select Case Nz(DameValorParam("PermisosBorrarLineasTiques"), 1)
+            Case 1
+            Case 2
+                If PermitirAcceso(".", "Borrar líneas") = True Then
+                    lngIdBarm = Nz(DLookup("IdBarm", "tbBarm", "CodBarman = '" & gstrUser & "'"), -1)
+                Else
+                    lngIdBarm = 0
+                End If
+                'lngIdBarm = Nz(BuscaAyuda("BR0", , 2), 0)
+                If lngIdBarm = 0 Then Exit Function
+            Case 3
+                If PermitirAcceso("BO", "Borrar líneas") = True Then
+                    lngIdBarm = Nz(DLookup("IdBarm", "tbBarm", "CodBarman = '" & gstrUser & "'"), -1)
+                Else
+                    lngIdBarm = 0
+                End If
+                If lngIdBarm = 0 Then Exit Function
+            Case 4
+                Exit Function
+        End Select
+    End If
+    Dim strEmpleado As String
+    strEmpleado = Nz(DLookup("Barman", "tbBarm", "IDBarm = " & lngIdBarm), "")
+    While Not rs.EOF
+        rsLB.AddNew
+        rsLB("Ahora") = Now()
+        rsLB("IdBarm") = lngIdBarm
+        rsLB("Empleado") = strEmpleado
+        For i = 5 To rsLB.Fields.Count - 1
+            rsLB(i) = rs(rsLB(i).Name)
+        Next i
+        rsLB.Update
+        rs.MoveNext
+        j = j + 1
+    Wend
+    'mbox "Se grabaron " & j & " líneas borradas"
+OK:
+    GrabarLineaBorrada = True
+Salir_GrabarLineaBorrada:
+    Exit Function
+Error_GrabarLineaBorrada:
+    Select Case Err
+        Case Else
+            MBox "Error nº " & Err & " en GrabarLineaBorrada" & vbCrLf & Err.Description
+            Resume Salir_GrabarLineaBorrada
+    End Select
+End Function
+
+
+Public Function DimeIdArtV(strArt As String) As Long
+    'Busca un artículo con el patrón que se introduzca en strArt
+    On Error GoTo Error_DimeIdArtV
+    Dim lngIdArtV As Long, strSQL As String
+    If IsNumeric(strArt) Then
+        'lngIdArtV = Nz(DLookup("IdArtV", "tbArtV", "IdArtV = " & strArt), 0)
+        lngIdArtV = Nz(DLookup("IdArtV", "tbArtV", "CodBarras = " & ConComillas(strArt)), 0)
+        If lngIdArtV <> 0 Then
+            DimeIdArtV = lngIdArtV
+            Exit Function
+        End If
+    End If
+    strSQL = "SELECT tbArtV.IdArtV, tbArtV.ArticuloVenta AS Artículo, tbArtV_Trf.PrecioU"
+    strSQL = strSQL & " FROM tbTipTrf INNER JOIN (tbArtV INNER JOIN tbArtV_Trf ON tbArtV.IdArtV = tbArtV_Trf.IdArtV) ON tbTipTrf.IdTrf = tbArtV_Trf.IdTrf"
+    strSQL = strSQL & " WHERE ArticuloVenta Like '" & strArt & "*'"
+    strSQL = strSQL & " AND tbTipTrf.Predet=True"
+    strSQL = strSQL & " ORDER BY tbArtV.ArticuloVenta;"
+    CurrentDb.Execute "UPDATE sysBusquedas SET strSQL = " & ConComillas(strSQL) & " WHERE CodBusqueda = 'AR201'", dbFailOnError
+    strSQL = "SELECT tbArtV.IdArtV, tbArtV.ArticuloVenta AS Artículo, tbArtV_Trf.PrecioU"
+    strSQL = strSQL & " FROM tbTipTrf INNER JOIN (tbArtV INNER JOIN tbArtV_Trf ON tbArtV.IdArtV = tbArtV_Trf.IdArtV) ON tbTipTrf.IdTrf = tbArtV_Trf.IdTrf"
+    strSQL = strSQL & " WHERE ArticuloVenta Like '" & strArt & "*'"
+    strSQL = strSQL & " AND tbTipTrf.Predet=True"
+    strSQL = strSQL & " ORDER BY tbArtV.CodArtV;"
+    CurrentDb.Execute "UPDATE sysBusquedas SET strSQL = " & ConComillas(strSQL) & " WHERE CodBusqueda = 'AR202'", dbFailOnError
+    lngIdArtV = Nz(BuscaAyuda("AR2", , 2), 0)
+    DimeIdArtV = lngIdArtV
+Salir_DimeIdArtV:
+    Exit Function
+Error_DimeIdArtV:
+    Select Case Err
+        Case Else
+            MBox "Error nº " & Err & " en DimeIdArtV" & vbCrLf & Err.Description
+            Resume Salir_DimeIdArtV
+    End Select
+End Function
+
+Public Sub RefacturarTiqueSiHayFactura(cT As cTique, Optional intSinSalveTique As Integer = False)
+    'Si el tique está facturado y no coincide el total de factura, volveer a facturar....
+    Dim v As Variant, intR As Integer, strSQL As String, rs As Recordset
+    Dim db As Database
+    On Error GoTo Error_RefacturarTiqueSiHayFactura
+    If IsOpenForm("frmTPV") And Not intSinSalveTique Then Call Forms("frmTPV").gcT.SalveTique
+    
+    v = cT.IdFactura_
+    If v > 0 Then
+        If Nz(DLookup("DireccionCliente", "tbFacturasCab", "IdFactura = " & v), "") = IIf(cT.CabeceraTicket_ = "", "-", cT.CabeceraTicket_) _
+        And Abs(DLookup("[TotalBase]+[TotalIVA]", "tbFacturasCab", "IdFactura = " & v) - cT.TotalTique_) < 0.02 Then
+            GoTo Salir_RefacturarTiqueSiHayFactura
+        End If
+
+        If DLookup("Imprimida", "tbFacturasCab", "IdFactura = " & v) = False Then GoTo GenerarFactura
+        intR = MBox("¿Modificar Factura de igual manera que el Tique?", vbYesNo + vbQuestion)
+        If intR = vbYes Then
+            strSQL = "UPDATE tbFacturasCab SET Imprimida=False WHERE IdFactura = " & v
+            CurrentDb.Execute strSQL, dbFailOnError
+GenerarFactura:
+            If cT.DbName_ = "" Then
+                Set db = CurrentDb
+            Else
+                Set db = OpenDatabase(cT.DbName_)
+            End If
+            strSQL = "SELECT * FROM tbTickCab"
+            strSQL = strSQL & " WHERE IdFactura = " & v
+            strSQL = strSQL & " ORDER BY IdTickCab"
+            
+            Set rs = db.OpenRecordset(strSQL, dbOpenSnapshot)
+            Dim intPrimer As Integer
+            intPrimer = True
+            While Not rs.EOF
+                If intPrimer = True Then
+                    FacturarTicket rs("IdTickCab"), , CLng(v), , , cT.DbName_
+                    intPrimer = False
+                Else
+                    FacturarTicket rs("IdTickCab"), , CLng(v), True, , cT.DbName_
+                End If
+                rs.MoveNext
+            Wend
+        End If
+    End If
+Salir_RefacturarTiqueSiHayFactura:
+    Exit Sub
+Error_RefacturarTiqueSiHayFactura:
+    Select Case Err
+        Case Else
+            MBox "Error nº " & Err & " en RefacturarTiqueSiHayFactura" & vbCrLf & Err.Description
+            Resume Salir_RefacturarTiqueSiHayFactura
+    End Select
+End Sub
+
+Public Function EsArtV_Balanza(lngIdArtV As Long) As Integer
+    On Error GoTo Error_EsArtV_Balanza
+    Dim strSQL As String, rs As Recordset
+    'strSQL = "SELECT Nz([PesoSN],False) AS EsBalanza"
+    'strSQL = strSQL & " FROM tbArtV"
+    'strSQL = strSQL & " WHERE tbArtV.IdArtV=" & lngIdArtV
+    'Set rs = CurrentDb.OpenRecordset(strSQL, dbOpenSnapshot)
+    'If Not rs.EOF Then
+    '    EsArtV_Balanza = rs("EsBalanza")
+    'End If
+    EsArtV_Balanza = Nz(DLookup("PesoSN", "tbArtV", "IdArtV = " & lngIdArtV), False)
+Salir_EsArtV_Balanza:
+    Exit Function
+Error_EsArtV_Balanza:
+    Select Case Err
+        Case Else
+            MBox "error nº " & Err & " en EsArtV_Balanza" & vbCrLf & Err.Description
+            Resume Salir_EsArtV_Balanza
+    End Select
+End Function
+
+
+Public Function DimeTarifaHora(ByVal dtNow As Date) As Variant
+    Dim lngIdTrf As Long
+    dtNow = dtNow - Int(dtNow)
+    lngIdTrf = Nz(DLookup("IdTrf", "tbTipTrf", "HoraDesde <=" & ComaPunto(CStr(CSng(dtNow))) & " AND HoraHasta >=" & ComaPunto(CStr(CSng(dtNow)))), 0)
+    If lngIdTrf = 0 Then
+        lngIdTrf = Nz(DLookup("IdTrf", "tbTipTrf", "(HoraDesde <=" & ComaPunto(CStr(CSng(dtNow))) & " OR HoraHasta >=" & ComaPunto(CStr(CSng(dtNow))) & ") AND (HoraDesde>HoraHasta)"), 0)
+    End If
+    If lngIdTrf = 0 Then lngIdTrf = Nz(DameValorParam("PuestoTarifaPredeterminada"), 0)
+    DimeTarifaHora = lngIdTrf
+End Function
+
+
+
+Public Function DimeIdLugar() As Long
+    On Error GoTo Error_DimeIdLugar
+    Dim lngIdLugar As Long, strTag As String
+    DoCmd.OpenForm "frmSelectLugar", , , , , acDialog
+    If Not IsOpenForm("frmSelectLugar") Then GoTo Salir_DimeIdLugar
+    strTag = Forms("frmSelectLugar")("lblResult").Tag
+    DoCmd.Close acForm, "frmSelectLugar"
+    Select Case Left(strTag, 1)
+        Case "L"
+            lngIdLugar = CLng(Mid(strTag, 2))
+        Case Else
+            MBox "No se ha seleccionado una mesa libre", vbExclamation
+    End Select
+Salir_DimeIdLugar:
+    DimeIdLugar = lngIdLugar
+    Exit Function
+Error_DimeIdLugar:
+    Select Case Err
+        Case Else
+            MBox "Error Nº " & Err & " en DimeIdLugar" & vbCrLf & Err.Description
+            Resume Salir_DimeIdLugar
+    End Select
+
+End Function
+
+
+Public Sub PonSeleccionesVarias(strCodSeleccion As String)
+    On Error GoTo Error_PonSeleccionesVarias
+    Dim rs As Recordset, rsA As Recordset, strConceptos As String
+    Select Case strCodSeleccion
+        Case "TM" 'Modificadores de Tarifas
+            CurrentDb.Execute "DELETE * FROM sysSeleccionesVarias WHERE CodSeleccion = 'TM'", dbFailOnError
+            Set rs = CurrentDb.OpenRecordset("tbTrfModificadores", dbOpenSnapshot)
+            Set rsA = CurrentDb.OpenRecordset("sysSeleccionesVarias", dbOpenDynaset)
+            While Not rs.EOF
+                If InStr(strConceptos, "|" & rs("Descuento_Suplemento") & "¬") = 0 Then
+                    rsA.AddNew
+                    rsA("CodSeleccion") = strCodSeleccion
+                    rsA("ValorOpcion") = rs("IdTrfMod")
+                    rsA("Seleccion") = rs("Descuento_Suplemento")
+                    rsA("Visible") = True
+                    rsA.Update
+                    strConceptos = strConceptos & "|" & rs("Descuento_Suplemento") & "¬"
+                End If
+                rs.MoveNext
+            Wend
+    End Select
+Salir_PonSeleccionesVarias:
+    Exit Sub
+Error_PonSeleccionesVarias:
+    Select Case Err
+        Case Else
+            MBox "error nº " & Err & " en PonSeleccionesVarias" & vbCrLf & Err.Description
+            Resume Salir_PonSeleccionesVarias
+    End Select
+
+End Sub
+
+Public Sub ColocaBotonesEnTPV(Optional intRunTime As Integer = False)
+    Dim strSQL As String, rs As Recordset, lngW As Long, lngH As Long, lngL As Long, lngT As Long
+    Dim ctl As Control, frm As Form, intAntLin As Integer, intAntPos As Integer, lbl As Control
+    Dim strCarpeta As String
+    On Error GoTo Error_ColocaBotonesEnTPV
+    strSQL = "SELECT * FROM pstBotonesTPV"
+    strSQL = strSQL & " WHERE Linea <=2"
+    strSQL = strSQL & " ORDER BY Linea, Posicion"
+    Set rs = CurrentDb.OpenRecordset(strSQL, dbOpenSnapshot)
+    If intRunTime = False Then
+        If IsOpenForm("frmTPV") Then DoCmd.Close acForm, "frmTPV"
+        DoCmd.OpenForm "frmTPV", acDesign, , , , acHidden
+    End If
+    Set frm = Forms("frmTPV")
+    lngW = frm.btnCancel.Width: lngH = frm.btnCancel.Height
+    lngT = frm("lstNotas").top + frm("lstNotas").Height
+    If Nz(DameValorParam("PuestoTPVNotasArriba"), False) = True Then lngT = lngT - frm("btnCancel").Height \ 2
+    strCarpeta = DirectorioDe(CurrentDb.Name) & "images\Botones\"
+    While Not rs.EOF
+        If intAntLin <> rs("Linea") Then
+            intAntPos = 0
+            intAntLin = rs("Linea")
+        End If
+        If intAntPos <> rs("Posicion") - 1 And intAntPos <> 0 Then
+            ctl.Width = lngW * (rs("Posicion") - intAntPos)
+        End If
+        intAntPos = rs("Posicion")
+        If rs("btnNombre") Like "not*" Then
+            If Nz(rs("Funcion"), "") <> "" Then
+                Set ctl = frm(rs("btnNombre"))
+                ctl.Left = (rs("Posicion") - 1) * lngW
+                ctl.top = (rs("Linea") - 1) * lngW + lngT
+                ctl.Tag = "lin" & rs("Linea")
+                Dim strAcceso As String
+                strAcceso = IIf(Nz(DLookup("NoAccesoNecesario", "sysMenus2", "Idcomando = " & rs("Funcion")), False), "False", "True")
+                'AccionMenu(lngComando, intMenu2_3, intResetUser, inAcceso)
+                ctl.OnClick = "=AccionMenu(" & Nz(rs("Funcion"), "") & ",2,False," & strAcceso & " )"
+                ctl.Caption = Nz(rs("Titulo"), "")
+                ctl.Visible = True
+            End If
+            If Nz(rs("Imagen"), "") <> "" Then ctl.Picture = rs("Imagen")
+        Else
+            Set ctl = frm(rs("btnNombre"))
+            ctl.Left = (rs("Posicion") - 1) * lngW
+            ctl.top = (rs("Linea") - 1) * lngH + lngT
+            ctl.Tag = "lin" & rs("Linea")
+            If Nz(rs("Imagen"), "") <> "" Then
+                If Dir(strCarpeta & rs("imagen")) <> "" Then ctl.Picture = strCarpeta & rs("Imagen")
+            End If
+            ctl.Visible = True
+        End If
+        If Nz(rs("Titulo"), "") <> "" Then ctl.ControlTipText = rs("Titulo")
+        For Each lbl In ctl.Controls
+            lbl.Left = ctl.Left
+            lbl.top = ctl.top + ctl.Height - lbl.Height
+            lbl.Caption = Nz(rs("Titulo"), "")
+            lbl.Visible = True
+        Next lbl
+        
+        ctl.Width = lngW
+        rs.MoveNext
+    Wend
+    strSQL = "SELECT * FROM pstBotonesTPV"
+    strSQL = strSQL & " WHERE Linea >2"
+    strSQL = strSQL & " ORDER BY Linea, Posicion"
+    Set rs = CurrentDb.OpenRecordset(strSQL, dbOpenSnapshot)
+    lngL = frm.subfrmPanel.Left
+    While Not rs.EOF
+        If False Then 'rs("btnNombre") Like "not*" Then
+        Else
+            Set ctl = frm(rs("btnNombre"))
+            ctl.Left = lngL
+            ctl.top = lngT
+            lngL = lngL + lngW
+            ctl.Visible = False
+        End If
+        rs.MoveNext
+    Wend
+    If Not intRunTime Then DoCmd.Close acForm, "frmTPV", acSaveYes
+Salir_ColocaBotonesEnTPV:
+    Exit Sub
+Error_ColocaBotonesEnTPV:
+    Select Case Err
+        Case Else
+            MBox "error nº " & Err & " en ColocaBotonesEnTPV" & vbCrLf & Err.Description
+            Resume Salir_ColocaBotonesEnTPV
+    End Select
+End Sub
+
+Public Function DimeConceptoPago(strPre As String) As String
+    On Error GoTo Error_DimeConceptoPago
+    Dim strConcepto As String, intR As Integer, strSQL As String
+    strConcepto = Nz(BuscaAyuda("CONP" & strPre, , 2, True, "  ***", , True), "")
+    If strConcepto = "" Then GoTo Salir_DimeConceptoPago
+    If strConcepto = "  ***" Then strConcepto = Nz(DimeTeclado(1, "Teclee Concepto de pago"), "")
+    If strConcepto = "" Then GoTo Salir_DimeConceptoPago
+    If IsNull(DLookup("ConceptoPago", "tbConceptosPago", "ConceptoPago = " & ConComillas(strPre & strConcepto))) Then
+        intR = MBox("¿Grabar " & strConcepto & " en la tabla de Conceptos - " & IIf(strPre = "+", "aportaciones", "pagos") & "?", vbYesNo + vbQuestion)
+        If intR = vbYes Then
+            strSQL = "INSERT INTO tbConceptosPago(ConceptoPago) SELECT " & Trim(ConComillas(strPre & Replace(strConcepto, """", "'")))
+            CurrentDb.Execute strSQL, dbFailOnError
+        End If
+    End If
+Salir_DimeConceptoPago:
+    DimeConceptoPago = strConcepto
+    Exit Function
+Error_DimeConceptoPago:
+    Select Case Err
+        Case Else
+            MBox "error nº " & Err & " en DimeConceptoPago" & vbCrLf & Err.Description
+            Resume Salir_DimeConceptoPago
+    End Select
+End Function
+
+Public Function DimeId_Barm_Proveedor(Optional ByRef intBP As Integer = 0, Optional ByRef strNombre As String = "") As Long
+    On Error GoTo Error_DimeId_Barm_Proveedor
+    Dim strRS As String, strNIF As String, intR As Integer, strSQL As String, lngIdR As Long
+    If intBP = 0 Then intBP = Nz(SeleccionDe("BP", "Seleccione opción", "Empleado/a - Proveedor - Extracción de caja"), 0)
+    If intBP = 0 Then GoTo Salir_DimeId_Barm_Proveedor
+    Select Case intBP
+        Case 1
+            lngIdR = Nz(BuscaAyuda("BR7", , 2), 0)
+            strNombre = Nz(DLookup("Barman", "tbBarm", "IdBarm = " & lngIdR), "")
+        Case 2
+            lngIdR = Nz(BuscaAyuda("PR0", , 2, True), 0)
+            If lngIdR = -1 Then
+                strRS = Replace(Nz(DimeTeclado(1, "Introduzca Razón Social del nuevo proveedor"), ""), """", "'")
+                If strRS = "" Then GoTo Salir_DimeId_Barm_Proveedor
+                strNIF = Replace(Nz(DimeTeclado(1, "Introduzca NIF del nuevo proveedor"), ""), """", "'")
+                strSQL = "INSERT INTO taProveedores (RazonSocial, NIF)"
+                strSQL = strSQL & " SELECT " & ConComillas(strRS) & " as RS, " & IIf(strNIF = "", "NULL", ConComillas(strNIF)) & " AS NIF"
+                CurrentDb.Execute strSQL, dbFailOnError
+                lngIdR = Nz(DLookup("IdProveedor", "taProveedores", "RazonSocial=" & ConComillas(strRS)), 0)
+            End If
+            strNombre = Nz(DLookup("RazonSocial", "taProveedores", "IdProveedor = " & lngIdR), "")
+        Case 3
+            strNombre = "Extracción de Caja"
+            lngIdR = -2
+        Case Else
+            MBox "Opción desconocida", vbExclamation
+    End Select
+    If intBP = 3 Then 'intBP = 1 Or intBP = 2 Or intBP = 3 Then
+        strNombre = Nz(DimeTeclado(1, "Introduzca Nombre-Concepto", strNombre), "")
+        
+        If strNombre = "" Then
+            MBox "Se canceló", vbInformation
+            intBP = 0
+        End If
+    End If
+        
+Salir_DimeId_Barm_Proveedor:
+    DimeId_Barm_Proveedor = lngIdR
+    Exit Function
+Error_DimeId_Barm_Proveedor:
+    Select Case Err
+        Case Else
+            MBox "error nº " & Err & " en DimeId_Barm_Proveedor" & vbCrLf & Err.Description
+            Resume Salir_DimeId_Barm_Proveedor
+    End Select
+End Function
+
+Public Sub PonPanelBase(frmTPV As Form)
+    On Error GoTo HandleError
+    Static strFrmPanel As String
+    If strFrmPanel = "" Then
+        If Nz(DameValorParam("PanelesGeneracionPrevia"), False) = True Then
+            strFrmPanel = Nz(DameValorParam("Puesto_frmUltimoPanel"), "frmPanel")
+        Else
+            strFrmPanel = "frmPanel"
+        End If
+    End If
+    If frmTPV.subfrmPanel.SourceObject <> strFrmPanel Then
+        frmTPV.subfrmPanel.SourceObject = strFrmPanel
+        frmTPV.gintCerrarSegundos = Nz(DameValorParam("TPVsegundosCronometro"), 0)
+        frmTPV.gintCrono = frmTPV.gintCerrarSegundos > 0
+        frmTPV.TimerInterval = IIf(frmTPV.gintCerrarSegundos > 0 And Nz(DameValorParam("TPVconCronometroSN"), False), 1000, 0) '1000   '
+    End If
+    
+HandleExit:
+    Exit Sub
+HandleError:
+    MBox Err.Description
+    Resume HandleExit
+End Sub
+
+Function DimeLote(Optional lngIdArtV As Long = 0, Optional lngIdProv As Long = 0, Optional dt As Date = 0) As String
+    On Error GoTo HandleError
+    Dim strXML As String, strR As String
+    If dt = 0 Then dt = Date
+    PonXML strXML, "IdArtV", lngIdArtV
+    PonXML strXML, "IdProv", lngIdProv
+    PonXML strXML, "Fecha", CLng(dt)
+    DoCmd.OpenForm "frmLoteProveedor", , , , , acDialog, strXML
+    If IsOpenForm("frmLoteProveedor") Then
+        strR = "Lote nº: " & Forms("frmLoteProveedor")("txtLOTE")
+        DoCmd.Close acForm, "frmLoteProveedor"
+    End If
+    DimeLote = strR
+        
+    
+HandleExit:
+    Exit Function
+HandleError:
+    MBox Err.Description
+    Resume HandleExit
+End Function

@@ -1,0 +1,17 @@
+Option Compare Database
+Option Explicit
+
+Public Sub TamañoImagen(strPathImagen As String, ancho As Integer, alto As Integer)
+    On Error GoTo HandleError
+    Dim miImagen As Object
+    Set miImagen = LoadPicture(strPathImagen) 'Creamos un objeto imagen, para sacar sus dimensiones
+    ancho = Round(miImagen.Width / 26.4583) 'Sacamos el ancho en píxeles
+    alto = Round(miImagen.Height / 26.4583) 'Sacamos el alto en píxeles
+    
+    
+HandleExit:
+    Exit Sub
+HandleError:
+    MBox Err.Description
+    Resume HandleExit
+End Sub

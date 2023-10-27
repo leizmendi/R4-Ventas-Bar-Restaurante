@@ -1,0 +1,205 @@
+Attribute VB_Name = "basAuxFiles"
+Option Compare Database
+Option Explicit
+
+
+Public Sub Pon_auxFiles_Historicos(dtDesde As Date, dtHasta As Date, Optional lngIdPuesto As Long = 0, _
+                          Optional intHistoricosEnCarpetasPuestos As Integer = False _
+                        , Optional intBorrar_auxFiles As Integer = True _
+                        , Optional intIncluirR4_Vta As Integer = False _
+                        , Optional intIncluirMesAnterior As Integer = False _
+                        , Optional intIncluirR4_Pre As Integer = False _
+                        , Optional intIncluirMesPosterior As Integer = False)
+    On Error GoTo Error_Pon_auxFiles_Historicos
+    'Rellena en auxFiles los ficheros que se deben examinar posteriormente
+    Dim strExpr As String, strHIS As String, strCarpetaHis As String, strMDB As String, strAño As String
+    Dim intPrimera As Integer, intMesD As Integer, intMesH As Integer, intAño As Integer, strCarHis_0 As String
+    Dim strSQL As String, rs As Recordset, lngOrd As Long, i As Integer
+    Dim strR4_PRE As String
+    If intBorrar_auxFiles Then CurrentDb.Execute "DELETE * FROM auxFiles", dbFailOnError
+    lngOrd = Nz(DMax("Orden", "auxFiles"), 0)
+    If Year(dtDesde) <> Year(dtHasta) Then
+        MBox "Sólo se pueden hacer consultas dentro de un mismo año"
+        Exit Sub
+    End If
+    intMesD = Month(dtDesde): intMesH = Month(dtHasta): intAño = Year(dtDesde)
+    strHIS = "R4_His"
+    'If right(strCarHis_0, 1) = "\" Then strCarHis_0 = Mid(strCarHis_0, 1, Len(strCarHis_0) - 1)
+    If intIncluirR4_Pre = True Then
+        If DLookup("DirectorioActual", "1myConexionTablas", "NombreTabla = 'tbPresenciaBarm'") Then
+            strR4_PRE = DirectorioDe(CurrentDb.Name)
+        Else
+            strR4_PRE = DLookup("DirectorioDeConexion", "1myConexionTablas", "NombreTabla = 'tbPresenciaBarm'")
+        End If
+        strR4_PRE = strR4_PRE & DLookup("FicheroDeConexion", "1myConexionTablas", "NombreTabla = 'tbPresenciaBarm'")
+    End If
+    
+    
+    If intHistoricosEnCarpetasPuestos = True Then
+        strSQL = "SELECT * FROM cfgPuestos WHERE True"
+        If lngIdPuesto <> 0 Then
+            strSQL = strSQL & " AND IdPuesto = " & lngIdPuesto
+        Else
+            'strSQL = strSQL & " AND EnUso = True"
+        End If
+        Set rs = CurrentDb.OpenRecordset(strSQL, dbOpenSnapshot)
+        While Not rs.EOF
+            strCarHis_0 = Nz(DameValorParamRemoto(rs("CarpetaBase") & "R4cfg.mdb", "TraspasosCarpetaHistoricos"), "Historicos\")
+            If InStr(strCarHis_0, ":") = 0 And InStr(strCarHis_0, "\\") = 0 Then
+                strCarHis_0 = rs("CarpetaBase") & strCarHis_0
+            End If
+            If right(strCarHis_0, 1) = "\" Then strCarHis_0 = RecDerTop(strCarHis_0, 1, 0)
+            strAño = CStr(intAño)
+            strCarpetaHis = strCarHis_0 & "_" & strAño & "\"
+            For i = intMesD To intMesH
+                strExpr = strCarpetaHis & strHIS & "_" & strAño & "_" & Format(i, "00")
+                
+                'If lngIdPuesto <> 0 Then strExpr = strExpr & "P" & lngIdPuesto
+                'Se está mirando en carpetas de puestos luego obligaremos a que sean historicos del puesto
+                strExpr = strExpr & "P" & rs("IdPuesto") & "_"
+                strExpr = strExpr & ".mdb"
+Busca1:
+                strMDB = Dir(strExpr)
+                While strMDB <> ""
+                    If IsNull(DLookup("strMdb", "auxFiles", "strMdb='" & strCarpetaHis & strMDB & "'")) Then
+                        lngOrd = lngOrd + 1
+                        strSQL = "INSERT INTO auxFiles ( Orden, strMdb ) SELECT " & lngOrd & " AS Expr1, '" & strCarpetaHis & strMDB & "' AS Expr2;"
+                        CurrentDb.Execute strSQL, dbFailOnError
+                    End If
+                    strMDB = Dir()
+                Wend
+                If InStr(strExpr, "i*.mdb") = 0 Then
+                    strExpr = strCarpetaHis & strHIS & "_" & strAño & "_" & Format(i, "00")
+                    strExpr = strExpr & "P" & rs("IdPuesto") & "_"
+                    strExpr = strExpr & "i*.mdb"
+                    GoTo Busca1
+                End If
+            Next i
+            If intIncluirR4_Vta = True Then
+                If IsNull(DLookup("strMdb", "auxFiles", "strMdb='" & rs("CarpetaBase") & "R4_Vta.mdb" & "'")) Then
+                    lngOrd = lngOrd + 1
+                    strSQL = "INSERT INTO auxFiles ( Orden, strMdb ) SELECT " & lngOrd & " AS Expr1, '" & rs("CarpetaBase") & "R4_Vta.mdb" & "' AS Expr2;"
+                    CurrentDb.Execute strSQL, dbFailOnError
+                End If
+            End If
+            If intIncluirR4_Pre = True Then
+                If IsNull(DLookup("strMdb", "auxFiles", "strMdb='" & strR4_PRE & "'")) Then
+                    lngOrd = lngOrd + 1
+                    strSQL = "INSERT INTO auxFiles ( Orden, strMdb ) SELECT " & lngOrd & " AS Expr1, '" & strR4_PRE & "' AS Expr2;"
+                    CurrentDb.Execute strSQL, dbFailOnError
+                End If
+            End If
+            rs.MoveNext
+        Wend
+    Else
+        strCarHis_0 = Nz(DameValorParam("TraspasosCarpetaHistoricos"), "Historicos\")
+        If InStr(strCarHis_0, ":") = 0 And InStr(strCarHis_0, "\\") = 0 Then
+            strCarHis_0 = DirectorioDe(CurrentDb.Name) & strCarHis_0
+        End If
+        If right(strCarHis_0, 1) = "\" Then strCarHis_0 = RecDerTop(strCarHis_0, 1, 0)
+        strAño = CStr(intAño)
+        strCarpetaHis = strCarHis_0 & "_" & strAño & "\"
+        For i = intMesD To intMesH
+            strExpr = strCarpetaHis & strHIS & "_" & strAño & "_" & Format(i, "00")
+            If lngIdPuesto <> 0 Then
+                strExpr = strExpr & "P" & lngIdPuesto
+            Else
+                strExpr = strExpr & "P*"
+            End If
+            strExpr = strExpr & "_.mdb"
+Busca2:
+            strMDB = Dir(strExpr)
+            While strMDB <> ""
+                If IsNull(DLookup("strMdb", "auxFiles", "strMdb='" & strCarpetaHis & strMDB & "'")) Then
+                    lngOrd = lngOrd + 1
+                    strSQL = "INSERT INTO auxFiles ( Orden, strMdb ) SELECT " & lngOrd & " AS Expr1, '" & strCarpetaHis & strMDB & "' AS Expr2;"
+                    CurrentDb.Execute strSQL, dbFailOnError
+                End If
+                strMDB = Dir()
+            Wend
+            If InStr(strExpr, "i*.mdb") = 0 Then
+                strExpr = strCarpetaHis & strHIS & "_" & strAño & "_" & Format(i, "00")
+                strExpr = strExpr & "P" & IIf(lngIdPuesto <> 0, lngIdPuesto, "*")
+                strExpr = strExpr & "_i*.mdb"
+                GoTo Busca2
+            End If
+        Next i
+        If intIncluirR4_Vta = True Then
+            strSQL = "SELECT * FROM cfgPuestos WHERE True"
+            If lngIdPuesto <> 0 Then
+                strSQL = strSQL & " AND IdPuesto = " & lngIdPuesto
+            Else
+                strSQL = strSQL & " AND EnUso = True"
+            End If
+            Set rs = CurrentDb.OpenRecordset(strSQL, dbOpenSnapshot)
+            While Not rs.EOF
+                If IsNull(DLookup("strMdb", "auxFiles", "strMdb='" & rs("CarpetaBase") & "R4_Vta.mdb" & "'")) Then
+                    lngOrd = lngOrd + 1
+                    strSQL = "INSERT INTO auxFiles ( Orden, strMdb ) SELECT " & lngOrd & " AS Expr1, '" & rs("CarpetaBase") & "R4_Vta.mdb" & "' AS Expr2;"
+                    CurrentDb.Execute strSQL, dbFailOnError
+                End If
+                rs.MoveNext
+            Wend
+        End If
+        If intIncluirR4_Pre = True Then
+            If IsNull(DLookup("strMdb", "auxFiles", "strMdb='" & strR4_PRE & "'")) Then
+                lngOrd = lngOrd + 1
+                strSQL = "INSERT INTO auxFiles ( Orden, strMdb ) SELECT " & lngOrd & " AS Expr1, '" & strR4_PRE & "' AS Expr2;"
+                CurrentDb.Execute strSQL, dbFailOnError
+            End If
+        End If
+    End If
+Salir_Pon_auxFiles_Historicos:
+    Dim intMes As Integer, dtMA As Date
+    If intIncluirMesAnterior Then
+        dtMA = dtDesde
+        While Month(dtMA) = Month(dtDesde)
+            dtMA = dtMA - 10
+        Wend
+        Pon_auxFiles_Historicos dtMA, dtMA, lngIdPuesto, intHistoricosEnCarpetasPuestos, False, False, False
+    End If
+    If intIncluirMesPosterior Then
+        dtMA = dtDesde
+        While Month(dtMA) = Month(dtDesde)
+            dtMA = dtMA + 10
+        Wend
+        Pon_auxFiles_Historicos dtMA, dtMA, lngIdPuesto, intHistoricosEnCarpetasPuestos, False, False, False
+    End If
+    Exit Sub
+Error_Pon_auxFiles_Historicos:
+    Select Case Err
+        Case Else
+            MBox "Error nº " & Err & " en Pon_auxFiles_Historicos" & vbCrLf & Err.Description
+            Resume Salir_Pon_auxFiles_Historicos
+    End Select
+End Sub
+
+Public Sub Pon_auxFiles_Carpeta(strCarpeta As String, Optional strMascaraFile As String = "*.*")
+    On Error GoTo Error_Pon_auxFiles_Carpeta
+    'Rellena en auxFiles los ficheros que se deben examinar posteriormente
+    Dim strExpr As String, strMDB As String
+    Dim strSQL As String, lngOrd As Long
+    
+    CurrentDb.Execute "DELETE * FROM auxFiles", dbFailOnError
+    lngOrd = Nz(DMax("Orden", "auxFiles"), 0)
+    strExpr = strCarpeta & strMascaraFile
+    strMDB = Dir(strExpr)
+    While strMDB <> ""
+        If IsNull(DLookup("strMdb", "auxFiles", "strMdb='" & strCarpeta & strMDB & "'")) Then
+            lngOrd = lngOrd + 1
+            strSQL = "INSERT INTO auxFiles ( Orden, strMdb ) SELECT " & lngOrd & " AS Expr1, '" & strCarpeta & strMDB & "' AS Expr2;"
+            CurrentDb.Execute strSQL, dbFailOnError
+        End If
+        strMDB = Dir()
+    Wend
+Salir_Pon_auxFiles_Carpeta:
+    Exit Sub
+Error_Pon_auxFiles_Carpeta:
+    Select Case Err
+        Case Else
+            MBox "Error nº " & Err & " en Pon_auxFiles_Carpeta" & vbCrLf & Err.Description
+            Resume Salir_Pon_auxFiles_Carpeta
+    End Select
+End Sub
+
+

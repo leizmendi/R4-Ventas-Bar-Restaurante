@@ -1,0 +1,560 @@
+Option Compare Database
+Option Explicit
+
+    Dim oWord As Word.Application
+    Dim mobjExcel As Excel.Application
+    Const adhcWordClass = "Word.application"
+    Const adhcExcelClass = "Excel.application"
+    Dim docW As Word.Document
+    Dim mxlsExcel As Excel.Workbook
+    Dim mObj As Object
+    
+    Enum TipoExcelImport
+        DatosEstablecimiento = 1
+        ListaArticulos = 2
+        Empleados_as = 3
+        Otros = 4
+    End Enum
+
+
+Public Sub ExportarSQL_Excel_OLD(strSQL As String, strFile As String, Optional intAbrirDoc As Integer = True)
+    On Error GoTo Error_ExportarSQL_Excel_OLD
+    Dim rs As Recordset, ws As Worksheet, i As Integer, j As Integer, z As Integer
+    DoCmd.Hourglass True
+    DoCmd.OutputTo acOutputQuery, strSQL, "Microsoft Excel (*.xls)", strFile & ".xls", intAbrirDoc
+    Exit Sub
+    
+    'FIN---------------------------------
+    
+    
+    Set mobjExcel = CreateObject("Excel.application")
+    mobjExcel.Visible = False
+    If Len(strFile) < 5 Then
+        strFile = strFile & ".xls"
+    End If
+    If right(strFile, 4) <> ".xls" Then
+        strFile = strFile & ".xls"
+    End If
+    If Dir(strFile) <> "" Then Kill strFile
+    Set mxlsExcel = mobjExcel.Workbooks.Add
+    Set ws = mxlsExcel.Worksheets(1)
+    Set rs = CurrentDb.OpenRecordset(strSQL, dbOpenSnapshot)
+    For j = 0 To rs.Fields.Count - 1
+        ws.Cells(1, j + 1) = rs.Fields(j).Name
+    Next j
+    i = 1
+    If Not rs.EOF Then
+        rs.MoveLast
+        rs.MoveFirst
+    End If
+    z = rs.RecordCount
+    While Not rs.EOF
+        i = i + 1
+        For j = 0 To rs.Fields.Count - 1
+            ws.Cells(i, j + 1) = Left(rs.Fields(j), 32768)
+            'ws.Cells(i, j + 1) = rs.Fields(j)
+        Next j
+        rs.MoveNext
+        SysCmd acSysCmdSetStatus, "Generando Hoja Excel: " & i & "/" & z & " filas"
+    Wend
+    mxlsExcel.SaveAs (strFile)
+    mobjExcel.Quit
+    If intAbrirDoc Then AbrirDoc strFile
+Salir_ExportarSQL_Excel_OLD:
+    DoCmd.Hourglass False
+    SysCmd acSysCmdClearStatus
+    Set mobjExcel = Nothing
+    Set mxlsExcel = Nothing
+    Set ws = Nothing
+    Exit Sub
+Error_ExportarSQL_Excel_OLD:
+    Select Case Err
+        Case 3190
+            MBox "Error nº " & Err & " en ExportarSQL_Excel_OLD" & vbCrLf & Err.Description
+            MBox "Probar a no incluir campos de contratos en el origen de datos"
+            Resume Salir_ExportarSQL_Excel_OLD
+        Case Else
+            MBox "Error nº " & Err & " en ExportarSQL_Excel_OLD" & vbCrLf & Err.Description
+            Resume Salir_ExportarSQL_Excel_OLD
+    End Select
+
+End Sub
+
+
+Public Function AbrirDoc(strDoc As String)
+    Dim strDocName As String
+    On Error GoTo Error_AbrirDoc
+    If right(strDoc, 3) = "xls" Then
+        Set mobjExcel = CreateObject("Excel.application")
+        mobjExcel.Visible = True
+        Set mxlsExcel = mobjExcel.Workbooks.Open(strDoc)
+    Else
+        'Abrir Word-------------------------------
+        Set oWord = CreateObject("Word.application")
+        oWord.Visible = True
+        Set docW = oWord.Documents.Open(strDoc)
+        oWord.Activate
+    End If
+Salir_AbrirDoc:
+    Set mobjExcel = Nothing
+    Set mxlsExcel = Nothing
+    Set oWord = Nothing
+    Set docW = Nothing
+    Exit Function
+Error_AbrirDoc:
+    Select Case Err
+        Case Else
+            MBox "Error nº " & Err & " en AbrirDoc " & vbCrLf & Err.Description
+            On Error Resume Next
+            'oWord.Documents.Close
+            Resume Salir_AbrirDoc
+            Resume Next
+    End Select
+End Function
+
+
+Public Sub ExportarSQL_Excel(strSQL As String, strFile As String, Optional intAbrirDoc As Integer = True, Optional strOtros As String)
+    On Error GoTo Error_ExportarSQL_Excel
+    Dim rs As Recordset, ws As Worksheet, i As Integer, j As Integer, z As Integer
+    Dim intColsFormat() As Integer
+    Dim intImpr() As Integer, intForm() As Integer, intTotal() As Integer
+    DoCmd.Hourglass True
+    Set mobjExcel = CreateObject("Excel.application")
+    mobjExcel.Visible = False
+    If Len(strFile) < 5 Then
+        strFile = strFile & ".xls"
+    End If
+    If right(strFile, 4) <> ".xls" Then
+        strFile = strFile & ".xls"
+    End If
+    If Dir(strFile) <> "" Then Kill strFile
+    Set mxlsExcel = mobjExcel.Workbooks.Add
+    Set ws = mxlsExcel.Worksheets(1)
+    Set rs = CurrentDb.OpenRecordset(strSQL, dbOpenSnapshot)
+  'Transfer the data to Excel
+   'ws.Range("A1").CopyFromRecordset rs
+    PonOtros rs.Fields.Count, strOtros, intImpr(), intForm(), intTotal
+    For j = 0 To rs.Fields.Count - 1
+        ws.Cells(1, j + 1) = rs.Fields(j).Name
+        'formato de la columna
+        'ws.Range(Cells(2, j + 1), Cells(2, j + 1)).Select
+        ws.Cells(1, j + 1).Select
+        mobjExcel.Selection.EntireColumn.Select
+        If intImpr(j + 1) = 0 Then
+ '           mobjExcel.Selection.Hidden = True
+        Else
+'            mobjExcel.Selection.Hidden = False
+        End If
+        Select Case intForm(j + 1)
+            Case 2
+                mobjExcel.Selection.NumberFormat = "hh:mm"
+            Case 3
+                mobjExcel.Selection.NumberFormat = "#,##0.00 €"
+            Case 4
+                mobjExcel.Selection.NumberFormat = "#,##0"
+            Case 5
+                mobjExcel.Selection.NumberFormat = "dd/mm/yyyy"
+            Case 9
+                mobjExcel.Selection.NumberFormat = "dd/mm/yy"
+            Case 6, 7
+                mobjExcel.Selection.NumberFormat = "0.00 %"
+            Case 8
+                mobjExcel.Selection.NumberFormat = "#,##0.00"
+        End Select
+    Next j
+    
+    i = 1
+    If Not rs.EOF Then
+        rs.MoveLast
+        rs.MoveFirst
+    End If
+    z = rs.RecordCount
+    While Not rs.EOF
+        i = i + 1
+        For j = 0 To rs.Fields.Count - 1
+            'ws.Cells(i, j + 1) = Left(rs.Fields(j), 32768)
+            ws.Cells(i, j + 1) = rs.Fields(j)
+        Next j
+        rs.MoveNext
+        SysCmd acSysCmdSetStatus, "Generando Hoja Excel: " & i & "/" & z & " filas"
+    Wend
+    Dim intHayTotal As Integer, k As Integer, intTOTAL_PROME_HorasMinutos As Integer ' 1=Total, 2=Promedio
+Bucle:
+    intHayTotal = False
+    intTOTAL_PROME_HorasMinutos = intTOTAL_PROME_HorasMinutos + 1
+    i = i + 1
+    For j = 0 To rs.Fields.Count - 1
+        If intTOTAL_PROME_HorasMinutos = 1 Then
+            ws.Cells(1, j + 1).Select
+            mobjExcel.Selection.HorizontalAlignment = xlCenter
+            mobjExcel.Selection.EntireColumn.AutoFit
+        End If
+        If intTotal(j + 1) = intTOTAL_PROME_HorasMinutos Or intTotal(j + 1) = 3 And intTOTAL_PROME_HorasMinutos = 1 Then
+            If intHayTotal = False Then
+                ws.Cells(i, 1) = IIf(intTOTAL_PROME_HorasMinutos = 1, "TOTAL", "PROMEDIO")
+                intHayTotal = True
+            End If
+            'ws.Cells(i, j + 1) = mobjExcel.WorksheetFunction.Sum(Range(Cells(2, j + 1), Cells(i - 1, j + 1)))
+            If intTotal(j + 1) = 1 Then
+                ws.Cells(i, j + 1).Formula = "=SUM(" & ws.Cells(2, j + 1).Address(False, False) & ":" & ws.Cells(i - 1, j + 1).Address(False, False) & ")"
+            ElseIf intTOTAL_PROME_HorasMinutos = 2 Then
+                ws.Cells(i, j + 1).Formula = "=AVERAGE(" & ws.Cells(2, j + 1).Address(False, False) & ":" & ws.Cells(i - 1, j + 1).Address(False, False) & ")"
+            Else
+                ws.Cells(i, j + 1) = Minutos_a_Horas(ws.Cells(i, j))
+            End If
+        End If
+    Next j
+    
+    For k = 1 To rs.Fields.Count
+        ws.Cells(1, k).Select
+        mobjExcel.Selection.Font.Bold = True
+        mobjExcel.Selection.Interior.ColorIndex = 15
+        'mobjExcel.Selection.Interior.HorizontalAlignment = xlHAlignCenter
+        ws.Cells(i, k).Select
+        mobjExcel.Selection.Font.Bold = True
+        mobjExcel.Selection.Interior.ColorIndex = 15
+        
+        mobjExcel.Selection.EntireColumn.AutoFit
+    Next k
+    If intTOTAL_PROME_HorasMinutos <= 1 Then GoTo Bucle
+    
+    ws.Cells(1, 1).Select
+    mxlsExcel.SaveAs (strFile)
+    mobjExcel.Quit
+    If intAbrirDoc Then AbrirDoc strFile
+Salir_ExportarSQL_Excel:
+    DoCmd.Hourglass False
+    SysCmd acSysCmdClearStatus
+    Set mobjExcel = Nothing
+    Set mxlsExcel = Nothing
+    Set ws = Nothing
+    Exit Sub
+Error_ExportarSQL_Excel:
+    Select Case Err
+        Case 3190
+            MBox "Error nº " & Err & " en ExportarSQL_Excel" & vbCrLf & Err.Description
+            MBox "Probar a no incluir campos de contratos en el origen de datos"
+            Resume Salir_ExportarSQL_Excel
+        Case Else
+            MBox "Error nº " & Err & " en ExportarSQL_Excel" & vbCrLf & Err.Description
+            Resume Salir_ExportarSQL_Excel
+    End Select
+
+End Sub
+
+
+
+Public Function PonOtros(intNumCampos As Integer, strOtros As String, intImpr() As Integer, intForm() As Integer, intTotal() As Integer)
+    On Error GoTo HandleError
+    Dim i As Integer, k As Integer, intC1 As Integer, intC2 As Integer, intC3 As Integer, intC4 As Integer
+    
+    ReDim intImpr(1 To intNumCampos) As Integer
+    'ReDim intAnch(1 To intgCampos) As Integer
+    'ReDim intAlin(1 To intgCampos) As Integer
+    ReDim intForm(1 To intNumCampos) As Integer
+    ReDim intTotal(1 To intNumCampos) As Integer
+    intC1 = InStr(1, strOtros, ",")
+    intC2 = InStr(intC1 + 1, strOtros, ",")
+    intC3 = InStr(intC2 + 1, strOtros, ",")
+    intC4 = InStr(intC3 + 1, strOtros, ",")
+    For i = 1 To intNumCampos
+        If k = 0 Then
+            If Mid(strOtros, i, 1) = "," Then k = i - 1
+        End If
+        If k > 0 Then
+            intImpr(i) = CInt(Mid(strOtros, k, 1))
+            'intAnch(i) = CInt(Mid(strOtros, intC1 + 1 + (k - 1) * 2, 2))
+            'intAlin(i) = CInt(Mid(strOtros, intC2 + k, 1))
+            intForm(i) = CInt(Mid(strOtros, intC3 + 1 + (k - 1) * 2, 2))
+            intTotal(i) = CInt(Mid(strOtros, intC4 + k, 1))
+        Else
+            intImpr(i) = CInt(Mid(strOtros, i, 1))
+            'intAnch(i) = CInt(Mid(strOtros, intC1 + 1 + (i - 1) * 2, 2))
+            'intAlin(i) = CInt(Mid(strOtros, intC2 + i, 1))
+            intForm(i) = CInt(Mid(strOtros, intC3 + 1 + (i - 1) * 2, 2))
+            intTotal(i) = CInt(Mid(strOtros, intC4 + i, 1))
+        End If
+    Next i
+    
+    
+HandleExit:
+    Exit Function
+HandleError:
+    MBox Err.Description
+    Resume HandleExit
+End Function
+
+
+Public Sub ImportarExcel(iTipo As TipoExcelImport)
+    On Error GoTo HandleError
+    Dim FileDlg As Office.FileDialog
+    Dim varItem As Variant, Xvar As Variant
+    Dim intR As Integer, strF As String, strC As String, strCP As String, i As Integer, j As Integer, strDir As String, t As Integer, tf As Integer
+    Dim strOP As String, strMsg As String, strFile As String, strTipo As String, strSQL As String, iR As Integer
+    Dim lngIdSeccion As Long, strArt As String, lngIdArtV As Long, lngColor As Long, lngColorTexto As Long, lngIdBoton As Long
+    
+        Dim rsS As Recordset, rsF As Recordset, rsA As Recordset, rsB As Recordset, rsT As Recordset
+        Dim lngIdSec As Long, lngIdFam As Long, strSecAnt As String, strFamAnt As String, lngIdTrf As Long
+    Dim lngIdPanel1 As Long, iPos As Integer
+    strC = DirectorioDe(CurrentDb.Name)
+    Select Case iTipo
+        Case TipoExcelImport.ListaArticulos
+            strOP = "Lista de artículos y precios"
+            strMsg = "Se espera una celdas con nombre: SECCIÓN" & vbCrLf & "El color de fondo y del texto se utilizarán para configurar los botones"
+        Case TipoExcelImport.DatosEstablecimiento
+            strOP = "Datos Establecimiento"
+            strMsg = "La estructura que se espera son celdas con los nombre: Nombre_Establecimiento, Razón_Social, NIF, Dirección, Teléfno y Email"
+        Case TipoExcelImport.Empleados_as
+            strOP = "Datos Empleados/as"
+            strMsg = "Se espera una celdas con nombre: ALIAS"
+        Case Else
+            MBox "Tipo de importación no implementado", vbExclamation
+            GoTo HandleExit
+    End Select
+AbrirFicheroAImportar:
+    Set FileDlg = Application.FileDialog(msoFileDialogFilePicker)
+        MBox strMsg, vbInformation
+        FileDlg.Title = "Seleccione el fichero Excel de " & strOP & " que quiera leer para importar datos"
+        FileDlg.AllowMultiSelect = False
+        FileDlg.Filters.Clear
+        FileDlg.Filters.Add "XLS", "*.xls*"
+        FileDlg.InitialFileName = strC & strFile
+        If FileDlg.Show = -1 Then
+            For Each varItem In FileDlg.SelectedItems
+                strF = varItem
+                Exit For
+            Next
+        Else
+            strF = ""
+        End If
+    Set FileDlg = Nothing
+    If strF = "" Then GoTo HandleExit
+LeerFichero:
+    Dim oEx As Excel.Application, xWb As Excel.Workbook, xWs As Excel.Worksheet, xRng As Excel.Range
+    Dim intF0 As Integer, intF As Integer, intC As Integer, intH As Integer, strR As String
+    Set oEx = New Excel.Application
+    Set xWb = oEx.Workbooks.Open(strF, , True)
+    oEx.Visible = True
+    
+    
+CompruebaCabecera:
+    Select Case iTipo
+        Case TipoExcelImport.DatosEstablecimiento
+            Set xWs = xWb.Worksheets("Datos Establecimiento")
+            xWs.Select
+            PonValorParam "EstablecimientoNombre", xWs.Range(xWb.Names("Nombre_Establecimiento"))
+            PonValorParam "EstablecimientoRazonSocial", xWs.Range(xWb.Names("Razón_Social"))
+            PonValorParam "EstablecimientoDireccion", xWs.Range(xWb.Names("Dirección"))
+            PonValorParam "EstablecimientoCP", xWs.Range(xWb.Names("Código_Postal"))
+            PonValorParam "EstablecimientoPoblacion", xWs.Range(xWb.Names("Población"))
+            PonValorParam "EstablecimientoProvincia", xWs.Range(xWb.Names("Provincia"))
+            PonValorParam "EstablecimientoCIF", xWs.Range(xWb.Names("NIF"))
+            PonValorParam "EstablecimientoTelefono", xWs.Range(xWb.Names("Teléfono"))
+            PonValorParam "EstablecimientoEmail", xWs.Range(xWb.Names("Email"))
+            If Nz(DameValorParam("FacturasCabecera"), "") <> "" Then
+                iR = MBox("¿Actualizar cabecera de facturas según nuevos datos?", vbOKCancel)
+                If iR = vbOK Then
+                    PonValorParam "FacturasCabecera", xWs.Range(xWb.Names("Nombre_Establecimiento")) & vbCrLf & _
+                                                    xWs.Range(xWb.Names("Razón_Social")) & vbCrLf & _
+                                                    xWs.Range(xWb.Names("Dirección")) & vbCrLf & _
+                                                    xWs.Range(xWb.Names("Código_Postal")) & " " & xWs.Range(xWb.Names("Población")) & " (" & xWs.Range(xWb.Names("Provincia")) & ")" & vbCrLf & _
+                                                    "CIF: " & xWs.Range(xWb.Names("NIF")) & vbCrLf & _
+                                                    xWs.Range(xWb.Names("Teléfono")) & " - " & xWs.Range(xWb.Names("Email")), 12
+                End If
+                
+            End If
+            MensajeBusyBox "Se importaron datos del establecimiento", "Importados datos del establecimiento", True
+            
+            Dim s As String, ancho As Integer, alto As Integer, sngW As Single, sngH As Single
+            s = AbrirDialogo(, "*.*", , Nz(DameValorParam("LogoUbicacion"), ""), "Indicar fichero de Logotipo", , DirectorioDe(CurrentDb.Name))
+            If s <> "" Then
+                PonValorParam "LogoUbicacion", s
+                TamañoImagen s, ancho, alto
+                sngW = Nz(DameValorParam("LogoAncho"), 5)
+                sngH = (alto / ancho) * sngW
+                If sngH > Nz(DameValorParam("TicketsLogoMaxAlto"), 3) Then
+                    sngH = Nz(DameValorParam("TicketsLogoMaxAlto"), 3)
+                    sngW = (ancho / alto) * sngH
+                End If
+                PonValorParam "LogoAncho", sngW
+                PonValorParam "LogoAlto", sngH
+            End If
+            
+        Case TipoExcelImport.Empleados_as
+            intR = MBox("¿Eliminar Empleados existentes?", vbOKCancel + vbQuestion)
+            If intR = vbOK Then
+                CurrentDb.Execute "DELETE * FROM tbBarm WHERE CodBarman<>'00'", dbFailOnError
+                ActualizarAutonumerico "tbBarm", "IdBarm", DimeFicheroDatos("tbBarm")
+            End If
+            Set xWs = xWb.Worksheets("Datos Empleados_as")
+            xWs.Select
+            Set rsB = CurrentDb.OpenRecordset("tbBarm", dbOpenDynaset)
+            xWs.Range(xWb.Names("ALIAS")).Select
+            intF0 = oEx.ActiveCell.Row
+            intF = intF0 + 1
+            intC = oEx.ActiveCell.Column
+            DoCmd.Hourglass True
+            While xWs.Cells(intF, intC) > 0
+                xWs.Cells(intF, intC).Select
+                rsB.FindFirst "Barman = '" & xWs.Cells(intF, intC) & "'"
+                MensajeBusyBox "Importando datos de Excel (Empleados/as): " & intF - intF0 & " registros" & vbCrLf & "Añadiendo " & xWs.Cells(intF, intC), "Importando Lista de Empleados/as"
+                If rsB.NoMatch Then
+                    rsB.AddNew
+                    rsB("Barman") = xWs.Cells(intF, intC)
+                    rsB("CodBarman") = Format(Nz(DMax("CodBarman", "tbBarm"), 0) + 1, "00")
+                    rsB("Pwd") = rsB("CodBarman") & rsB("CodBarman")
+                Else
+                    rsB.Edit
+                End If
+                rsB("Nombre") = xWs.Cells(intF, intC + 1)
+                rsB("Apellidos") = xWs.Cells(intF, intC + 2)
+                rsB("DNI") = xWs.Cells(intF, intC + 3)
+                rsB("Email") = xWs.Cells(intF, intC + 4)
+                rsB("TPV_SN") = xWs.Cells(intF, intC + 5) = "S"
+                rsB.Update
+                i = i + 1
+                intF = intF + 1
+            Wend
+            DoCmd.Hourglass False
+            MensajeBusyBox "Se importaron " & i & " empleados/as", "Importada Lista de Empleados/as", True
+        Case TipoExcelImport.ListaArticulos ' Lista de Precios
+            Set xWs = xWb.Worksheets("Lista de Precios")
+            xWs.Select
+            Set rsS = CurrentDb.OpenRecordset("tbSec_Art", dbOpenDynaset)
+            Set rsF = CurrentDb.OpenRecordset("tbFam_Art", dbOpenDynaset)
+            Set rsA = CurrentDb.OpenRecordset("tbArtV", dbOpenDynaset)
+            Set rsB = CurrentDb.OpenRecordset("tbBotones", dbOpenDynaset)
+            Set rsT = CurrentDb.OpenRecordset("tbArtV_Trf", dbOpenDynaset)
+            lngIdTrf = Nz(DLookup("IdTrf", "tbTipTrf", "Predet = True"), 0)
+            lngIdPanel1 = Nz(DLookup("IdPanel", "tbPAneles", "CartaSN=False AND Orden = 1"), 0)
+            xWs.Range(xWb.Names("SECCIÓN")).Select
+            intF0 = oEx.ActiveCell.Row
+            intF = intF0 + 1
+            intC = oEx.ActiveCell.Column
+            DoCmd.Hourglass True
+            While xWs.Cells(intF, intC + 2) > 0
+                xWs.Cells(intF, intC).Select
+                If Nz(xWs.Cells(intF, intC), "") <> "" Then 'SECCIÓN
+                    If Nz(xWs.Cells(intF, intC), "") <> strSecAnt Then
+                        strSecAnt = Nz(xWs.Cells(intF, intC), "")
+                        rsS.FindFirst "Seccion = " & ConComillas(strSecAnt)
+                        If rsS.NoMatch Then
+                            rsS.AddNew
+                            rsS("CodSeccion") = Chr(Asc(Nz(DMax("CodSeccion", "tbSec_Art"), "0")) + 1)
+                            rsS("Seccion") = strSecAnt
+                            rsS("Ver") = True
+                            rsS("Orden") = Nz(DMax("Orden", "tbSec_Art"), 0) + 1
+                            rsS("PreciosIvaIncluidoSN") = True
+                            rsS("DesgloseZ") = True
+                            rsS("ColorBotones") = oEx.Selection.Interior.Color
+                            lngIdSec = rsS("IdSeccion")
+                            rsS.Update
+                        Else
+                            lngIdSec = rsS("IdSeccion")
+                        End If
+                        strFamAnt = "|@#"
+                    End If
+                End If
+                xWs.Cells(intF, intC + 1).Select
+                If Nz(xWs.Cells(intF, intC + 1), "") <> "" Then 'FAMILIA
+                    If Nz(xWs.Cells(intF, intC + 1), "") <> strFamAnt Then
+                        strFamAnt = Nz(xWs.Cells(intF, intC + 1), "")
+                        rsF.FindFirst "Familia = " & ConComillas(strFamAnt)
+                        If rsF.NoMatch Then
+                            rsF.AddNew
+                            rsF("IdSeccion") = lngIdSec
+                            rsF("Familia") = strFamAnt
+                            rsF("CodFamilia") = CLng(Nz(DMax("CodFamilia", "tbFam_Art", "IdSeccion = " & lngIdSec), "0")) + 1
+                            rsF("Orden") = Nz(DMax("Orden", "tbFam_Art"), 0) + 1
+                            rsF("Ver") = True
+                            rsF("Color") = oEx.Selection.Interior.Color
+                            lngIdFam = rsF("IdFamilia")
+                            lngIdBoton = 0
+                            rsF.Update
+                        Else
+                            lngIdFam = rsF("IdFamilia")
+                            lngIdBoton = Nz(rsF("IdBoton"), 0)
+                        End If
+                    End If
+                    If lngIdBoton = 0 Then
+                        lngIdBoton = HazBoton(strFamAnt, oEx.Selection.Interior.Color, oEx.Selection.Font.Color)
+                        CurrentDb.Execute "UPDATE tbFam_Art SET IdBoton = " & lngIdBoton & " WHERE IdFamilia = " & lngIdFam, dbFailOnError
+                    Else
+                        ActualizaBoton lngIdBoton, strFamAnt, oEx.Selection.Interior.Color, oEx.Selection.Font.Color
+                    End If
+                End If
+                xWs.Cells(intF, intC + 2).Select
+                strArt = Nz(xWs.Cells(intF, intC + 2), "¿?")
+                rsA.FindFirst "ArticuloVenta = " & ConComillas(strArt)
+                If rsA.NoMatch Then
+                    MensajeBusyBox "Importando datos e Excel (Lista de Precios): " & intF - intF0 & " registros" & vbCrLf & "Añadiendo " & xWs.Cells(intF, intC + 2), "Importando Lista de Artículos"
+                    rsA.AddNew
+                    rsA("IdFamilia") = lngIdFam
+                    rsA("CodArtV2") = Nz(DMax("CodArtV2", "tbArtV"), 0) + 1
+                    rsA("CodArtV") = Format(rsA("CodArtV2"), "000")
+                    rsA("ArticuloVenta") = strArt
+                    rsA("Orden") = Nz(DMax("Orden", "tbArtV", "IdFamilia = " & lngIdFam), 0) + 1
+                    lngIdArtV = rsA("IdArtV")
+                Else
+                    MensajeBusyBox "Importando datos de Excel (Lista de Precios): " & intF - intF0 & " registros" & vbCrLf & "Actualizando " & xWs.Cells(intF, intC + 2), "Importando Lista de Artículos"
+                    rsA.Edit
+                End If
+                lngColor = oEx.Selection.Interior.Color
+                lngColorTexto = oEx.Selection.Font.Color
+                If Nz(rsA("IdBoton"), 0) = 0 Then
+                    lngIdBoton = HazBoton(strArt, lngColor, lngColorTexto)
+                    rsA("IdBoton") = lngIdBoton
+                Else
+                    ActualizaBoton rsA("IdBoton"), strArt, lngColor, lngColorTexto
+                End If
+                rsA("TxtTicket") = RecDerTop(strArt, 0, 30)
+                rsA("TxtFactura") = strArt
+                rsA("TipoIVA") = DLookup("TipoIVA", "tbTipIVA", "IVA = " & ComaPunto(Nz(xWs.Cells(intF, intC + 4), "¿?")))
+                rsA("Ver") = True
+                rsA("PesoSN") = Nz(xWs.Cells(intF, intC + 4), "¿?") = "S"
+                lngIdArtV = rsA("IdArtV")
+                rsA.Update
+                rsT.FindFirst "IdArtV = " & lngIdArtV & " AND IdTrf = " & lngIdTrf
+                If rsT.NoMatch Then
+                    rsT.AddNew
+                    rsT("IdArtV") = lngIdArtV
+                    rsT("IdTrf") = lngIdTrf
+                Else
+                    rsT.Edit
+                End If
+                rsT("PrecioU") = SpNz(xWs.Cells(intF, intC + 3), 0)
+                rsT.Update
+                intF = intF + 1
+                i = i + 1
+                
+                If Nz(xWs.Cells(intF, intC + 5), "") = "S" Then
+                    iPos = iPos + 1
+                    If iPos <= 62 Then AñadirPanelDet lngIdPanel1, lngIdArtV, 1, iPos
+                End If
+                If Nz(xWs.Cells(intF, intC + 6), "") = "S" Then
+                    iPos = iPos + 1
+                    If iPos <= 62 Then AñadirPanelDet lngIdPanel1, lngIdFam, 5, iPos
+                End If
+            Wend
+            DoCmd.Hourglass False
+            MensajeBusyBox "Se importaron " & i & " artículos", "Importada Lista de Artículos", True
+        Case Else
+            MBox "No implementado", vbInformation
+    End Select
+    
+HandleExit:
+    DoCmd.Hourglass False
+    SysCmd acSysCmdClearStatus
+    On Error Resume Next
+    xWb.Close False
+    oEx.Quit
+
+    Exit Sub
+HandleError:
+    Select Case Err
+        Case 13, 3421: Resume Next
+        Case Else
+            MBox "Error nº " & Err & vbCrLf & Err.Description
+            Resume HandleExit
+    End Select
+End Sub

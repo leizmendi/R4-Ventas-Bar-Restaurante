@@ -1,0 +1,1542 @@
+
+Option Compare Database
+Option Explicit
+    Global g_lngIdCajaCab As Long
+
+Public Function fNuevoPago(strOrigen As String, _
+                        lngIdFrom As Long, _
+                        Optional strFormaPago As String = "", _
+                        Optional intCambios As Integer = False, _
+                        Optional strConcepto As String = "", _
+                        Optional curImporte As Currency = 0, _
+                        Optional strNombrePersona As String = "", _
+                        Optional intLockNombre As Integer = False, _
+                        Optional intLockDate As Integer = False, _
+                        Optional intReciboSN As Integer = False, _
+                        Optional strMDB As String = "", _
+                        Optional intCashGuardDeposit As Integer = False, _
+                        Optional lng_aIdBP As Long = 0, Optional intBP As Integer = 0) As Variant
+    'devuelve lngIdCajaDet si no hay problema y 0 si hay algun error
+    On Error GoTo Error_fNuevoPago
+    Dim curpagado As Currency, strTitulo As String 'strNombrePersona
+    Dim strXML As String, lngIdCajaCab As Long, lngIdCajaDet  As Long
+    Dim intR As Integer, strBox As String
+    Dim strCodFPago As String, lngIdFParcial As Long, intRecibo As Integer
+    Dim lngIdFT As Long
+    Dim db As Database, rs As Recordset, strSQL As String, dtD As Date
+CajaAbierta:
+    fNuevoPago = 0
+    If strMDB = "" Then
+        Dim lngIdPuesto As Long
+        If strOrigen = "T" Then ' si es pago de un tique, se graba en la caja del puesto correspondiente al tique
+            lngIdPuesto = Nz(DLookup("IdPuesto", "tbTickCab", "IdTickCab = " & lngIdFrom), -1)
+        Else
+            lngIdPuesto = glngMiPuesto
+        End If
+        lngIdCajaCab = IsCajaOpen(lngIdPuesto)
+        If lngIdCajaCab = 0 Then 'la caja está cerrada
+            intR = MBox("¿Abrir caja?" & vbCrLf & "La caja del puesto está cerrada, no se pueden realizar operaciones de cobro o pago", vbQuestion + vbYesNo)
+            If intR = vbYes Then
+                AbrirCaja lngIdPuesto
+                GoTo CajaAbierta
+            End If
+            Exit Function
+        End If
+    Else
+        Set db = OpenDatabase(strMDB)
+        strSQL = "SELECT TOP 1 IdCajaCab FROM tbCajaCab"
+        Set rs = db.OpenRecordset(strSQL, dbOpenSnapshot)
+        If Not rs.EOF Then
+            lngIdCajaCab = rs("IdCajaCab")
+        Else
+            strSQL = "SELECT * FROM tbTickCab WHERE IdTickCab = " & lngIdFrom
+            Set rs = db.OpenRecordset(strSQL, dbOpenSnapshot)
+            If Not rs.EOF Then
+                dtD = rs("Fecha")
+            Else
+                dtD = Date
+            End If
+            lngIdCajaCab = 1
+            strSQL = "INSERT INTO tbCajaCab (IdCajaCab, IdPuesto, Fecha_A)"
+            strSQL = strSQL & " SELECT " & lngIdCajaCab & " as IdC, " & glngMiPuesto & " as IdP, #" & Format(dtD, "yyyy/mm/dd") & "# as Fec"
+            db.Execute strSQL, dbFailOnError
+        End If
+    End If
+        
+    Select Case strOrigen
+        Case "T"
+            If strMDB = "" Then
+                'strConcepto = "Pago Tique" ' nº " & lngIdFrom
+                If curImporte = 0 Then curImporte = Nz(DLookup("TotalTicket", "tbTickCab", "IdTickCab = " & lngIdFrom), 0)
+                curpagado = Nz(DSum("Cantidad", "tbCajaDet", "Origen = 'T' AND IdFrom = " & lngIdFrom), 0)
+                'Ver si hay pagos en factura
+                lngIdFT = Nz(DLookup("IdFactura", "tbTickCab", "IdTickCab = " & lngIdFrom), 0)
+            Else
+                strSQL = "SELECT * FROM tbTickCab WHERE IdTickCab = " & lngIdFrom
+                Set rs = db.OpenRecordset(strSQL, dbOpenSnapshot)
+                If Not rs.EOF Then
+                    curImporte = Nz(rs("TotalTicket"), 0)
+                    lngIdFT = Nz(rs("IdFactura"), 0)
+                Else
+                    curImporte = 0
+                End If
+                strSQL = "SELECT Sum(Cantidad) as Pagado FROM tbCajaDet WHERE Origen = 'T' AND IdFrom = " & lngIdFrom
+                Set rs = db.OpenRecordset(strSQL, dbOpenSnapshot)
+                If Not rs.EOF Then
+                    curpagado = Nz(rs("Pagado"), 0)
+                Else
+                    curpagado = 0
+                End If
+            End If
+            If lngIdFT > 0 Then
+                curpagado = curpagado + Nz(DSum("Cantidad", "tbCajaDet", "Origen = 'F' AND IdFrom = " & lngIdFT), 0)
+            End If
+            curImporte = curImporte - curpagado
+            strTitulo = "Pago de Tique nº " & lngIdFrom
+        Case "F"
+            strNombrePersona = ExtraeLin(Nz(DLookup("DireccionCliente", "tbFacturasCab", "IdFactura = " & lngIdFrom), ""), 1)
+            strConcepto = "Pago Factura" '& Nz(DLookup("[Serie] & [NumeroDeFactura]", "tbFacturasCab", "IdFactura = " & lngIdFrom), "?")
+            If curImporte = 0 Then curImporte = Nz(DLookup("[TotalBase] + [TotalIVA]", "tbFacturasCab", "IdFactura = " & lngIdFrom), 0)
+            curpagado = TotalFacturaPagos(lngIdFrom)
+            '¿ver pagos de facturas parciales?
+            curImporte = curImporte - curpagado
+            strTitulo = "Pago Factura nº " & Nz(DLookup("[Serie] & [NumeroDeFactura]", "tbFacturasCab", "IdFactura = " & lngIdFrom), "?")
+        Case "C", "CP", "CC"
+            If strOrigen = "CP" Then
+                strBox = "Pagar"
+                strOrigen = "C"
+            ElseIf strOrigen = "CC" Then
+                strBox = "Cobrar"
+                strOrigen = "C"
+            Else
+                AbreBox "001"
+                If Not IsOpenForm("frm_BotonBox") Then Exit Function
+                strBox = Forms("frm_BotonBox")("lblResult").Caption
+                DoCmd.Close acForm, "frm_BotonBox"
+            End If
+            
+            'strNombrePersona = strEmpleado
+            'curImporte = 0
+            curpagado = 0
+            If strBox = "Pagar" Then
+                strTitulo = "Pago de Caja"
+                PonXML strXML, "X_1", "True"
+            ElseIf strBox = "Cobrar" Then
+                strTitulo = "Cobro de Caja"
+' no que da problemas al iniciar factura, que hagan una factura desde frmFacturas....
+'PonXML strXML, "casGenerarFactura", "Visible"
+            Else ' modificar pago
+                lngIdCajaDet = Nz(BuscaAyuda("PA0", , 2), 0)
+                If lngIdCajaDet > 0 Then
+                    fNuevoPago = ModificarPago(lngIdCajaDet)
+                End If
+                Exit Function
+            End If
+            PonXML strXML, "PagoCaja", "True"
+            If intCashGuardDeposit Then
+                PonXML strXML, "CashGuardDeposit", "S"
+                strCodFPago = Nz(DameValorParam("PuestoCashGuardFormaPago"), "")
+            ElseIf strFormaPago = "" Then
+                strCodFPago = Nz(DLookup("CodFPago", "tbFPago", "Berezi = 5"), 0)
+            Else
+                strCodFPago = strFormaPago
+            End If
+            PonXML strXML, "FormaPago", strCodFPago
+        Case "E"
+            'strNombrePersona = Trim(Nz(DLookup("NombreCliente", "tbFichasCab", "IdFichaCab = " & lngIdFrom), "") & " " _
+                             & Nz(DLookup("ApellidosCliente", "tbFichasCab", "IdFichaCab = " & lngIdFrom), ""))
+            PonXML strXML, "NombrePersona", strNombrePersona
+            strTitulo = "Pago Ficha Nº: " & lngIdFrom
+            strConcepto = "Estancia"
+            'If Nz(DameValorParam("FacturasParcialesSN"), False) = True Then
+            '    PonXML strXML, "casGenerarFactura", "Visible"
+            'End If
+            If curImporte = 0 Then curImporte = Nz(TotalFicha(lngIdFrom, 3), 0)
+            'curPagado = Nz(TotalFichaPagos(lngIdFrom), 0)
+            'curImporte = curImporte - curPagado
+        Case "R"
+            strTitulo = "Pago factura recibida Nº: " & Nz(DLookup("NumeroDeFactura", "tbFacturasRecibidas", "IdFacturaRecibida = " & lngIdFrom), "")
+            strConcepto = "Pago " & Nz(DLookup("Proveedor", "tbFacturasRecibidas", "IdFacturarecibida = " & lngIdFrom), "")
+            'strConcepto = strConcepto & "F.: " & Nz(DLookup("NumeroDeFactura", "tbFacturasRecibidas", "IdFacturarecibida = " & lngIdFrom), "")
+            PonXML strXML, "X_1", "True"
+            If curImporte = 0 Then curImporte = Nz(DSum("[Base] * (1 + [IVA] + [RecEq])", "tbFacturasRecibidasDet", "IdFacturaRecibida = " & lngIdFrom), 0)
+            curpagado = Nz(DSum("Cantidad", "tbCajaDet", "Origen = 'R' AND IdFrom = " & lngIdFrom), 0)
+            curImporte = curImporte + curpagado
+    End Select
+    
+    Dim curCantidad As Currency, curEntrega As Currency, curDevolucion As Currency
+    Dim varFPago As Variant, datFecha As Date, intFact As Integer
+    If intCashGuardDeposit = True And curImporte < 0 Then 'Es un pago de caja ya dispensado
+        curCantidad = curImporte
+        varFPago = strCodFPago
+        curEntrega = 0
+        curDevolucion = curImporte * -1
+        datFecha = Now()
+        GoTo Intro_Cobro
+    End If
+    PonXML strXML, "Titulo", strTitulo
+    PonXML strXML, "NombrePersona", strNombrePersona
+    PonXML strXML, "BloqueoNombrePersona", IIf(intLockNombre, -1, 0)
+    PonXML strXML, "BloqueoFecha", IIf(intLockDate, -1, 0)
+    PonXML strXML, "Concepto", strConcepto
+    PonXML strXML, "Importe", curImporte
+    PonXML strXML, "ReciboSN", IIf(intReciboSN, "S", "N")
+    If strFormaPago <> "" Then
+        If curImporte = 0 Then GoTo Salir_fNuevoPago
+        curCantidad = curImporte
+        varFPago = Nz(DimeXML(strFormaPago, "CodFPago"), "")
+        If varFPago = "" Then varFPago = strFormaPago
+        'If varFPago = "" Then varFPago = Nz(BuscaAyuda("FP0", , 2), "")
+        If varFPago = "" Then Exit Function
+        curEntrega = curImporte
+        curDevolucion = 0
+        datFecha = Now()
+        intRecibo = intReciboSN
+        GoTo Intro_Cobro
+    End If
+    If intCambios = True Then
+        If curImporte = 0 Then GoTo Salir_fNuevoPago
+        curCantidad = curImporte
+        varFPago = DLookup("CodFPago", "tbFPago", "Predeterminada = True")
+        DoCmd.OpenForm "frmMoneda", , , , , acDialog, strXML
+        If Not IsOpenForm("frmMoneda") Then Exit Function
+        intFact = IIf(Forms("frmMoneda")("lbl_1").Visible, -1, 1)
+        curCantidad = CCur(Forms("frmMoneda")("txtImporte")) * intFact
+        curEntrega = CCur(Forms("frmMoneda")("txtEntrega")) * intFact
+        If curEntrega < curCantidad Then
+            curCantidad = curEntrega
+            curDevolucion = 0
+        Else
+            curDevolucion = CCur(Nz(Forms("frmMoneda")("txtDevolucion"), 0)) * intFact
+        End If
+        datFecha = Now()
+        DoCmd.Close acForm, "frmMoneda"
+        GoTo Intro_Cobro
+    End If
+    
+    PonXML strXML, "MDB", strMDB
+    DoCmd.OpenForm "frmIntroPago", , , , , acDialog, strXML
+    If Not IsOpenForm("frmIntroPago") Then
+        If intCashGuardDeposit And strBox = "Cobrar" Then
+            gcCG.CG_regret 1
+        End If
+        Exit Function
+    End If
+    
+    intFact = IIf(Forms("frmIntroPago")("lbl_1").Visible, -1, 1)
+    curCantidad = CCur(Forms("frmIntroPago")("txtImporte")) * intFact
+    varFPago = Forms("frmIntroPago")("cmbFPago")
+    curEntrega = CCur(Forms("frmIntroPago")("txtEntrega")) * intFact
+    curDevolucion = CCur(Nz(Forms("frmIntroPago")("txtDevolucion"), 0)) * intFact
+    strNombrePersona = CStr(Nz(Forms("frmIntroPago")("txtNombrePersona"), ""))
+    strConcepto = CStr(Nz(Forms("frmIntroPago")("txtConcepto"), ""))
+    If intLockDate Then
+        datFecha = Now()
+    Else
+        datFecha = CDate(Nz(Forms("frmIntroPago")("txtFecha"), 0))
+    End If
+    If Nz(Forms("frmIntroPago")("casGenerarFactura"), False) = True Then
+        'lngIdFParcial = FacturarPagoFicha(lngIdFrom, curCantidad, strConcepto, Date)
+        If lngIdFParcial = 0 Then
+            intR = MBox("No se generó factura, ¿introducir el pago de todas maneras?", vbQuestion + vbOKCancel)
+            If intR = vbCancel Then
+                DoCmd.Close acForm, "frmIntroPago"
+                Exit Function
+            End If
+        End If
+    End If
+    intRecibo = Nz(Forms("frmIntroPago")("casRecibo"), False)
+    DoCmd.Close acForm, "frmIntroPago"
+    'Cuando se ha generado factura de un pago directo a caja
+    If strOrigen = "C" And lngIdFrom = 0 And lngIdFParcial <> 0 Then
+        lngIdFrom = lngIdFParcial
+        strOrigen = "F"
+    End If
+    '''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+    Dim strFP As String
+    If gintCashLogyIsOn = True Then 'IsOpenForm("frmCashLogy") Then
+        strFP = Nz(DameValorParam("PuestoCashLogyFormaPago"), "")
+        If CStr(varFPago) = strFP Then 'Forms("frmCashLogy").wsTCP.State = sckConnected Then
+            curImporte = curCantidad ' Nz(DLookup("TotalTicket", "tbTickCab", "IdTickCab = " & glngIdTickCab), 0)
+            'wsTCP.SendData "#C#1#1#" & Round(curImporte - curPagado, 2) * 100 & "#" & 0 & "#" & 0 & "#" & 0 & "#" & 1 & "#" & 1 & "#" & IIf(Nz(DameValorParam("PuestoCashLogyVerEncimaSN"), False) = False, 0, 1) & "#" & 1 & "#"
+            Forms("frmCashLogy").wsTCP.SendData "#C#1#1#" & Round(curImporte, 2) * 100 & "#" & 0 & "#" & 0 & "#" & 0 & "#" & 0 & "#" & 0 & "#" & IIf(Nz(DameValorParam("PuestoCashLogyVerEncimaSN"), False) = False, 0, 1) & "#" & 0 & "#"
+            Forms("frmCashLogy").gstrArrival = ""
+            DoEvents
+            PonXML strXML, "Esperando", "DataArrival"
+            
+            DoCmd.OpenForm "frmCashLogyEsperando", , , , , acDialog, strXML
+            curCantidad = PagadoCashLogy(Forms("frmCashLogy").gstrArrival, curEntrega, curDevolucion)
+        End If
+    End If
+    '''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+    If gintCashGuardIsOn = True Then ' Se ha seleccionado Forma de Pago CashFuard en el formulario de Pago -> Botón de Pago Mixto
+        Dim intSePaga As Integer
+        strFP = Nz(DameValorParam("PuestoCashGuardFormaPago"), "")
+        If CStr(varFPago) = strFP Then
+            curImporte = curCantidad
+            intSePaga = gcCG.CG_cobrar(curImporte, Nz(DLookup("[Serie] & [NumTicket]", "tbTickCab", "IdTickCab = " & lngIdFrom), 0), lngIdCajaCab, lngIdFrom)
+            If Not intSePaga Then GoTo Salir_fNuevoPago
+        End If
+    End If
+    ''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''CashGuard
+    If intCashGuardDeposit Then
+        strFP = Nz(DameValorParam("PuestoCashGuardFormaPago"), "")
+        varFPago = strFP
+    End If
+    
+Intro_Cobro:
+    lngIdCajaDet = IntroducirCobro(lngIdCajaCab, varFPago, datFecha, curCantidad, curEntrega, curDevolucion, lngIdFrom, strOrigen, strNombrePersona, strConcepto, , lngIdFParcial, strMDB)
+'    If lngIdCajaDet > 0 Then
+    If lngIdCajaDet = 0 Then
+        MBox "No se grabó el pago"
+        fNuevoPago = 0
+        Exit Function
+    Else
+        curImporte = curCantidad 'para devolver el valor de la cantidad finalmente pagada
+        'If lng_aIdBP > 0 Then
+        If intBP > 0 Then
+            strSQL = "INSERT INTO tbpagoscaja ( IdPuesto, IdCajaDet, Fecha, Importe, FormaPago, aIdBarm, aIdProveedor, Concepto )"
+            If glngMiPuesto = 0 Then Pon_glngMiPuesto
+            
+            strSQL = strSQL & " SELECT " & glngMiPuesto & " AS Expr1, " & _
+                                lngIdCajaDet & " AS Expr2,  Now() AS Expr3, " & _
+                                ComaPunto(curCantidad) & " AS Expr4, " & _
+                                ConComillas(Nz(DLookup("Descripcion", "tbFPago", "CodFPago = '" & varFPago & "'"), "")) & " AS Expr5, "
+            If intBP = 1 Then
+                strSQL = strSQL & lng_aIdBP & " AS aIdBarm, Null as IdProveedor, " & ConComillas(strConcepto) & " AS Expr8;"
+            ElseIf intBP = 2 Then
+                strSQL = strSQL & " Null AS aIdBarm," & lng_aIdBP & " as IdProveedor, " & ConComillas(strConcepto) & " AS Expr8;"
+            ElseIf intBP = 3 Then
+                strSQL = strSQL & " Null AS aIdBarm, Null as IdProveedor, " & ConComillas(strConcepto) & " AS Expr8;"
+            Else
+                strSQL = strSQL & " 0 AS aIdBarm,0 as IdProveedor, " & ConComillas(strConcepto) & " AS Expr8;"
+            End If
+            CurrentDb.Execute strSQL, dbFailOnError
+        End If
+    End If
+    If intRecibo Then
+        ImprimirRecibo lngIdCajaDet
+    End If
+    If strBox = "Pagar" Then
+        If Nz(DameValorParam("EnviaEmailAlPagarDeCaja"), False) = True Then
+            Dim strTo As String, strBody As String
+            strTo = Nz(DameValorParam("EmailEnvioCierreCaja"), "")
+            If strTo = "" Then
+                MBox "Se debe indicar Email de envío de cierre de caja", vbExclamation
+            Else
+                strBody = Format(datFecha, "dd/mm/yyyy hh:nn")
+                strBody = strBody & vbCrLf & "El usuario " & gstrUser & " ha realizado un pago por una cantidad de " & _
+                            Format(curCantidad, "currency") & " en concepto de " & strConcepto & "." & vbCrLf
+                If intBP = 1 Then
+                    strBody = strBody & "El pago es al empleado/a: " & Nz(DLookup("Barman", "tbBarm", "IdBarm = " & lng_aIdBP), "?")
+                ElseIf intBP = 2 Then
+                    strBody = strBody & "El pago es al proveedor: " & Nz(DLookup("RazonSocial", "taProveedores", "IdProveedor = " & lng_aIdBP), "?")
+                End If
+                Dim strAttachs As String
+                If intRecibo Then strAttachs = DirectorioDe(CurrentDb.Name) & "recibo.txt"
+                Envia_Email "Pago de caja - " & Format(curCantidad, "currency"), strBody, strTo, , , strAttachs
+            End If
+        End If
+    End If
+Salir_fNuevoPago_True:
+    fNuevoPago = lngIdCajaDet
+Salir_fNuevoPago:
+    Exit Function
+Error_fNuevoPago:
+    Select Case Err
+        Case Else
+            MBox "Error nº " & Err & " en fNuevoPago" & vbCrLf & Err.Description
+            Resume Salir_fNuevoPago
+    End Select
+
+End Function
+
+Public Function IntroducirCobro(lngIdCajaCab As Long, _
+                            varFPago As Variant, _
+                            datFecha As Date, _
+                            curCantidad As Currency, _
+                            curEntrega As Currency, _
+                            curDevolucion As Currency, _
+                            lngIdFrom As Long, _
+                            strOrigen As String, _
+                            strNombrePersona As String, _
+                            strConcepto As String, _
+                            Optional lngIdCajaDet As Long = 0, _
+                            Optional lngIdFParcial As Long = 0, _
+                            Optional strMDB As String = "") As Variant
+    Dim rs As Recordset, strSQL As String
+    Dim strFPago As String
+    Dim strFormaDePago As String
+    On Error GoTo Error_IntroducirCobro
+    IntroducirCobro = 0
+    If IsNull(varFPago) Then
+        MBox "Se debe indicar Forma de Pago"
+        Exit Function
+        strFPago = "-"
+    Else
+        strFPago = CStr(varFPago)
+        strFormaDePago = Nz(DLookup("Descripcion", "tbFPago", "CodFPago = '" & strFPago & "'"), "?")
+    End If
+    Dim db As Database
+    If strMDB = "" Then
+        Set db = CurrentDb
+    Else
+        Set db = OpenDatabase(strMDB)
+    End If
+    Set rs = db.OpenRecordset("tbCajaDet")
+    If lngIdCajaDet = 0 Then
+        rs.AddNew
+    Else
+        rs.FindFirst "IdCajaDet = " & lngIdCajaDet
+        If rs.NoMatch Then
+            MBox "No se encontró el pago a modificar"
+            Exit Function
+        End If
+        rs.Edit
+    End If
+    rs("IdCajaCab") = lngIdCajaCab
+    rs("Fecha") = datFecha
+    rs("Cantidad") = curCantidad
+    rs("Entrega") = curEntrega
+    rs("Devolucion") = curDevolucion
+    rs("CodFPago") = strFPago
+    rs("IdFrom") = lngIdFrom
+    rs("Origen") = strOrigen
+    If lngIdFParcial <> 0 Then
+        rs("IdFParcial") = lngIdFParcial
+    End If
+    lngIdCajaDet = rs("IdCajaDet")
+    rs.Update
+    If Len(strNombrePersona) > 0 Or Len(strConcepto) > 0 Then
+        Set rs = CurrentDb.OpenRecordset("tbCajaDet_Concepto")
+        rs.FindFirst "IdCajaDet = " & lngIdCajaDet
+        If rs.NoMatch Then
+            rs.AddNew
+            rs("IdCajaDet") = lngIdCajaDet
+        Else
+            rs.Edit
+        End If
+        rs("NombrePersona") = strNombrePersona
+        rs("Concepto") = RecDerTop(strConcepto, 0, 50)
+        rs.Update
+    End If
+    If strOrigen = "T" Then
+        PonFormaPagadoTiques db, db, lngIdFrom
+        'strSQL = "SELECT tbTickCab.* FROM tbTickCab WHERE IdTickCab = " & lngIdFrom
+        'Set rs = CurrentDb.OpenRecordset(strSQL, dbOpenDynaset)
+        'If Not rs.EOF Then
+        '    rs.Edit
+        '    rs("TotalPagado") = Nz(rs("TotalPagado"), 0) + curCantidad
+        '    If Nz(rs("FormaPagado"), "") = "" Then
+        '        rs("FormaPagado") = strFormaDePago
+        '    Else
+        '        If rs("FormaPagado") <> strFormaDePago Then rs("FormaPagado") = "+ varias"
+        '    End If
+        '    rs.Update
+        'End If
+    End If
+    
+    IntroducirCobro = lngIdCajaDet
+    'Si_Si_aPendienteProcesar "CD", lngIdCajaDet
+Salir_IntroducirCobro:
+    Set rs = Nothing
+    Exit Function
+Error_IntroducirCobro:
+    Select Case Err
+        Case Else
+            MBox Err.Description & ", Error nº " & Err.number _
+            & vbCrLf & "En IntroducirCobro"
+    End Select
+    Resume Salir_IntroducirCobro
+End Function
+
+Public Function ComprobarCaja()
+    If glngMiPuesto = 0 Then
+        ComprobarCaja = False
+        Exit Function
+    End If
+    g_lngIdCajaCab = Nz(DLookup("IdCajaCab", "tbCajaCab", "IdPuesto = " & glngMiPuesto & " AND A_C = 1"), 0)
+    If g_lngIdCajaCab > 0 Then
+        ComprobarCaja = True
+    Else
+        ComprobarCaja = False
+    End If
+End Function
+
+Public Function IsCajaOpen(Optional lngIdPuesto As Long = -1) As Long
+' Devuelve IdCajaCab de caja abierta, si no hay ninguna devuelve 0
+    If lngIdPuesto = -1 Then lngIdPuesto = glngMiPuesto
+    If lngIdPuesto = 0 Then
+        IsCajaOpen = 0
+        Exit Function
+    End If
+    g_lngIdCajaCab = Nz(DLookup("IdCajaCab", "tbCajaCab", "IdPuesto = " & lngIdPuesto & " AND A_C = 1"), 0)
+    IsCajaOpen = g_lngIdCajaCab
+End Function
+
+Public Sub AbrirCaja(Optional lngIdPuesto As Long = 0)
+    On Error GoTo Error_AbrirCaja
+    Dim intNAcceso As Integer
+    If lngIdPuesto = 0 Then lngIdPuesto = glngMiPuesto
+    If Nz(DLookup("IdCajaCab", "tbCajaCab", "IdPuesto = " & lngIdPuesto & " AND A_C = 1"), 0) > 0 Then
+        MBox "La Caja de este puesto ya está abierta", vbExclamation
+        Exit Sub
+    End If
+'    intNAcceso = Nz(DameValorParam("AplicacionNivelAccesoCierreCaja"), 2)
+'    If intNAcceso > gintNivelAcceso Then
+'        Call Acceso
+'        If intNAcceso > gintNivelAcceso Then Exit Sub
+'    End If
+    Dim lngIdCajaCab As Long, strSQL As String
+    If glngMiPuesto = 0 Then Pon_glngMiPuesto
+    If glngMiPuesto = 0 Then Exit Sub
+    If lngIdPuesto = 0 Then lngIdPuesto = glngMiPuesto
+    DoCmd.OpenForm "frmCajaA_C", , , , , acDialog, "A"
+    If Not IsOpenForm("frmCajaA_C") Then Exit Sub
+    Dim rs As Recordset
+    Set rs = CurrentDb.OpenRecordset("tbCajaCab", dbOpenDynaset)
+    rs.AddNew
+    rs("IdPuesto") = lngIdPuesto
+    rs("Fecha_A") = CDate(Forms("frmCajaA_C")("Fecha_A"))
+    rs("Hora_A") = CDate(Forms("frmCajaA_C")("Hora_A"))
+    rs("Cantidad_A") = CCur(Nz(Forms("frmCajaA_C")("Cantidad_A"), 0))
+    rs("Observaciones") = "Apertura: " & Nz(Forms("frmCajaA_C")("Observaciones"), "-")
+    rs("A_C") = 1
+    lngIdCajaCab = rs("IdCajaCab")
+    rs.Update
+    'Si_Si_aPendienteProcesar "CC", lngIdCajaCab
+    CurrentDb.Execute "DELETE * FROM auxSeries", dbFailOnError
+
+Salir_AbrirCaja:
+    On Error Resume Next
+    DoCmd.Close acForm, "frmCajaA_C"
+    Exit Sub
+Error_AbrirCaja:
+    Select Case Err
+        Case Else
+            MBox "Error nº " & Err & " en AbrirCaja" & vbCrLf & Err.Description
+            g_lngIdCajaCab = 0
+            Resume Salir_AbrirCaja
+    End Select
+End Sub
+
+Public Sub CerrarCaja(Optional ByRef intQuit As Integer)
+    Dim curSeRetira As Currency, strCodFP As String, strSQL As String, intR As Integer, lngIdPuesto As Long
+    On Error GoTo Error_CerrarCaja
+    Dim intNAcceso As Integer, strUser As String
+    Dim rs As Recordset, lngIdCajaCab As Long, dtZ As Date, dtA As Date
+    Dim rsAux As Recordset, i As Integer, lngIdTickCab As Long
+    strUser = "-"
+    If Nz(DameValorParam("PuestoIdentificarUsuarioAlCerrarCaja"), True) = True Then
+        If Not PermitirAcceso("CC", "Cierre de Caja", True, "Cierre de Caja") Then Exit Sub
+        strUser = gstrUser
+    End If
+    If Nz(DameValorParam("AlCerrarCajaControlTodosTiquesAbiertosSN"), True) = True Then
+        strSQL = "SELECT tbTickCab.IdTickCab, tbTickCab.Serie & tbTickCab.NumTicket AS [Tique Nº], TotalTicket"
+        strSQL = strSQL & " FROM tbTickCab"
+        strSQL = strSQL & " WHERE tbTickCab.IdPuesto=" & glngMiPuesto
+        strSQL = strSQL & " AND tbTickCab.Hecho = False"
+        Set rs = CurrentDb.OpenRecordset(strSQL, dbOpenSnapshot)
+        CurrentDb.Execute "DELETE * FROM auxTiquesPendientesFacturar"
+        Set rsAux = CurrentDb.OpenRecordset("auxTiquesPendientesFacturar", dbOpenDynaset)
+        While Not rs.EOF
+            rsAux.AddNew
+            rsAux("IdTickCab") = rs("IdTickCab")
+            rsAux("NumeroTique") = rs("Tique Nº")
+            rsAux("TotalTicket") = rs("TotalTicket")
+            rsAux.Update
+            rs.MoveNext
+            i = i + 1
+        Wend
+        If i > 0 Then
+            MBox IIf(i = 1, "Se encontró 1 tique", "Se encontraron " & i & " tique/s") & " abiertos, se deben cerrar todos los tiques antes de cerrar la caja", vbExclamation, "Tiques abiertos"
+            lngIdTickCab = Nz(BuscaAyuda("TPP", , 2), 0)
+            If lngIdTickCab > 0 Then
+                DoCmd.OpenForm "frmTPV"
+                Forms("frmTPV").CargaTicket (lngIdTickCab)
+            End If
+            intQuit = True
+            Exit Sub
+        End If
+    End If
+    If Nz(DameValorParam("AlCerrarCaja_Accesos_a_Presencia"), True) Then
+        Call Accesos_a_Presencia
+    End If
+    DoCmd.OpenForm "frmCajaA_C", , , , , acDialog, "C"
+    If Not IsOpenForm("frmCajaA_C") Then Exit Sub
+    If IsNumeric(Forms("frmCAjaA_C")("txtSeRetira")) Then
+        curSeRetira = CCur(Forms("frmCAjaA_C")("txtSeRetira"))
+        strCodFP = Nz(DLookup("CodFPago", "tbFPago", "Berezi = 5"), "")
+        If strCodFP = "" Then
+            MBox "Se debe indicar la forma de pago que corresponde a retirada en efectivo de caja"
+            GoTo Salir_CerrarCaja
+        End If
+    End If
+    Set rs = CurrentDb.OpenRecordset("tbCajaCab", dbOpenDynaset)
+    rs.FindLast "A_C = 1 and IdPuesto = " & glngMiPuesto
+    If rs.NoMatch Then
+        MBox "No se encontró caja abierta para cerrar"
+        Exit Sub
+    End If
+    lngIdCajaCab = rs("IdCajaCab")
+    dtA = rs("Fecha_A")
+    rs.Edit
+    rs("Fecha_C") = CDate(Forms("frmCajaA_C")("Fecha_A"))
+    rs("Hora_C") = CDate(Forms("frmCajaA_C")("Hora_A"))
+    rs("Cantidad_C") = CCur(Nz(Forms("frmCajaA_C")("Cantidad_A"), 0))
+    rs("Observaciones") = rs("Observaciones") & vbCrLf & "Cierre: " & Nz(Forms("frmCajaA_C")("Observaciones"), "-")
+    If Nz(DameValorParam("CajaImprimirDesgloseEnCierre"), False) = True Then
+        rs("Observaciones") = rs("Observaciones") & WriteDesglose(Nz(Forms("frmCajaA_C")("txtDesgloses_C"), ""), 1)
+    End If
+    rs("A_C") = 2
+    rs("User_C") = strUser
+    rs("Desgloses_C") = Nz(Forms("frmCajaA_C")("txtDesgloses_C"), "-")
+    rs.Update
+    PonValorParam "PuestoCantidadCierreCaja", CCur(Nz(Forms("frmCajaA_C")("Cantidad_A"), 0)), 5
+    If curSeRetira > 0 Then
+        Set rs = CurrentDb.OpenRecordset("tbCajaDet", dbOpenDynaset)
+        rs.AddNew
+        rs("IdCajaCab") = lngIdCajaCab
+        rs("Cantidad") = -1 * curSeRetira
+        rs("CodFPago") = strCodFP
+        rs("Origen") = "R"
+        rs.Update
+    End If
+    curSeRetira = 0
+    If Nz(Forms("frmCAjaA_C")("CashlogyAlCerrarCajaVaciarStackerSN"), False) = True Then
+        curSeRetira = CashLogy_Stacker_Vaciar
+    End If
+    If curSeRetira > 0 Then
+        strCodFP = Nz(DameValorParam("PuestoCashLogyFormaPago"), strCodFP)
+        Set rs = CurrentDb.OpenRecordset("tbCajaDet", dbOpenDynaset)
+        rs.AddNew
+        rs("IdCajaCab") = lngIdCajaCab
+        rs("Cantidad") = -1 * curSeRetira
+        rs("CodFPago") = strCodFP
+        rs("Origen") = "R"
+        rs.Update
+        strSQL = "UPDATE tbCajaCab Set Observaciones = Observaciones  & " & vbCrLf & ConComillas("Vaciado Stacker: ....  " & Format(curSeRetira, "Currency"))
+        strSQL = strSQL & " WHERE IDCajaCab = " & lngIdCajaCab
+        CurrentDb.Execute strSQL, dbFailOnError
+    End If
+    'Si_Si_aPendienteProcesar "CC", lngIdCajaCab
+    If Nz(DameValorParam("ListadosImprimirCierreAlCerrarCaja"), True) Then
+        gint_auxListado1_2 = 1
+        ImprimirCierreDeCaja lngIdCajaCab, glngMiPuesto, dtA
+    End If
+    If Nz(DameValorParam("PuestoTraspasarVentasAHistorico"), True) Then
+        intR = vbOK 'intR = mbox("Se traspasarán ventas a archivo histórico", vbOKCancel + vbInformation + vbDefaultButton1)
+        If intR = vbOK Then 'TraspasarVentasAHistorico
+            If glngMiPuesto = 0 Then Pon_glngMiPuesto
+            Traspasar_A_Historicos , , , , glngMiPuesto, , , Nz(DameValorParam("HistoricosXCaja"), True)
+        End If
+    End If
+    Dim dt As Date, strFile As String
+    dt = Date
+    If Format(Now, "HH:NN") < Nz(DameValorParam("TicketsHoraCambioDia"), "04:00") Then dt = dt - 1
+    If Nz(DameValorParam("ListadosImprimirVentasZAlCerrarCaja"), True) Then
+        gint_auxListado1_2 = 2
+        ImprimirZ dt, glngMiPuesto
+        'If Nz(DameValorParam("ListadosImprimirZzSN"), False) = True Then
+        '    PonValorParam "ZsSoloTiposIncluirEnZ", Not Nz(DameValorParam("ZsSoloTiposIncluirEnZ"), False)
+        '    ImprimirZ dt, glngMiPuesto
+        '    PonValorParam "ZsSoloTiposIncluirEnZ", Not Nz(DameValorParam("ZsSoloTiposIncluirEnZ"), False)
+        'End If
+    End If
+    If Nz(DameValorParam("EnviaEmailAlCerrarCaja"), False) Then
+        strFile = "Z_" & Format(dt, "dd-mm-yyyy") & ".txt"
+        ImprimirZ dt, glngMiPuesto, , True, strFile, True
+        Dim strTo As String, strBody As String, strFile2 As String
+        Dim strAttachs As String
+        strTo = Nz(DameValorParam("EmailEnvioCierreCaja"), "")
+        If strTo = "" Then
+            MBox "Se debe indicar Email de envío de cierre de caja", vbExclamation
+        Else
+            strBody = "Adjunto ventas del día y cierre de caja, " & DameValorParam("EstablecimientoNombre") & Format(dt, "dd/mm/yy")
+            strFile2 = "Cierre_caja_" & Format(dt, "dd-mm-yyyy") & ".txt"
+            ImprimirCierreDeCaja lngIdCajaCab, glngMiPuesto, dtA, , True, strFile2, True
+            strAttachs = strFile & ";" & strFile2 & ";"
+            Envia_Email DameValorParam("EstablecimientoNombre") & " - Ventas y Cierre de caja - " & Format(dt, "dd/mm/yy"), strBody, strTo, , , strAttachs
+            
+        End If
+    End If
+    If Nz(DameValorParam("ListadosEnviarProgramadosICN"), 3) = 2 Then
+        EnvioListadosProgramados Nz(DameValorParam("ListadosEnvioProgramadosConfirmarSN"), True)
+    End If
+    If gm_H4 Then
+        Select Case Nz(DameValorParam("GenerarOI_RSN"), 0)
+            Case 1
+                GenerarOI_Rte dtA, dtA, glngMiPuesto
+            Case 2
+                GenerarOI_Super dtA, dtA, glngMiPuesto
+        End Select
+    End If
+Salir_CerrarCaja:
+    On Error Resume Next
+    DoCmd.Close acForm, "frmCajaA_C"
+    Exit Sub
+Error_CerrarCaja:
+    Select Case Err
+        Case Else
+            MBox "Error nº " & Err & " en CerrarCaja" & vbCrLf & Err.Description
+            Resume Salir_CerrarCaja
+            Resume Next
+    End Select
+End Sub
+
+
+Public Function ModificarPago(lngIdCajaDet As Long, Optional strMDB As String = "") As Variant
+    On Error GoTo Error_ModificarPago
+    Dim strXML As String, intRecibo As Integer, strSQL As String, lngIdTickCab As Long
+    PonXML strXML, "IdCajaDet", lngIdCajaDet
+    PonXML strXML, "Titulo", "Modificar pago"
+    PonXML strXML, "MDB", strMDB
+    DoCmd.OpenForm "frmIntroPago", , , , , acDialog, strXML
+    If Not IsOpenForm("frmIntroPago") Then Exit Function
+    
+    Dim rs As Recordset, strConcepto As String, strNombrePersona As String, db As Database
+    If strMDB = "" Then
+        Set db = CurrentDb
+    Else
+        Set db = OpenDatabase(strMDB)
+    End If
+    Set rs = db.OpenRecordset("tbCajaDet", dbOpenDynaset)
+    rs.FindFirst "IdCajaDet = " & lngIdCajaDet
+    If Not rs.NoMatch Then
+        rs.Edit
+        rs("Fecha") = CDate(Forms("frmIntroPago")("txtFecha"))
+        rs("Cantidad") = CCur(Forms("frmIntroPago")("txtImporte"))
+        rs("CodFPago") = Forms("frmIntroPago")("cmbFPago")
+        rs("Entrega") = CCur(Forms("frmIntroPago")("txtEntrega"))
+        rs("Devolucion") = CCur(Nz(Forms("frmIntroPago")("txtDevolucion"), 0))
+        If rs("Origen") = "T" Then lngIdTickCab = rs("IdFrom")
+        rs.Update
+    End If
+    strConcepto = Nz(Forms("frmIntroPago")("txtConcepto"), "")
+    strNombrePersona = Nz(Forms("frmIntroPago")("txtNombrePersona"), "")
+    intRecibo = Forms("frmIntroPago")("casRecibo")
+    DoCmd.Close acForm, "frmIntroPago"
+    If Len(strConcepto) > 0 Or Len(strNombrePersona) > 0 Then
+        Set rs = CurrentDb.OpenRecordset("tbCajaDet_Concepto", dbOpenDynaset)
+        rs.FindFirst "IdCajaDet = " & lngIdCajaDet
+        If rs.NoMatch Then
+            rs.AddNew
+            rs("IdCajaDet") = lngIdCajaDet
+        Else
+            rs.Edit
+        End If
+        rs("Concepto") = RecDerTop(strConcepto, 0, 50)
+        rs("NombrePersona") = RecDerTop(strNombrePersona, 0, 50)
+        rs.Update
+    Else
+        db.Execute "DELETE * FROM tbCajaDet_Concepto WHERE IdCajaDet = " & lngIdCajaDet, dbFailOnError
+    End If
+    If intRecibo Then
+        ImprimirRecibo lngIdCajaDet
+    End If
+    If lngIdTickCab <> 0 Then PonFormaPagadoTiques db, db, lngIdTickCab
+    If IsOpenForm("frmFichas") Then Forms("frmFichas")("lstPagos").Requery
+    If IsOpenForm("frmFacturas") Then Forms("frmFacturas")("lstPagos").Requery
+    If IsOpenForm("frmFacturasRecibidas") Then Forms("frmFacturasRecibidas")("lstPagos").Requery
+    If IsOpenForm("frmPagosACaja") Then
+        Forms("frmPagosACaja")("lstPagos").Requery
+        Forms("frmPagosACaja")("lstResumen").Requery
+    End If
+    ModificarPago = True
+    'Si_Si_aPendienteProcesar "CD", lngIdCajaDet
+
+Salir_ModificarPago:
+    Exit Function
+Error_ModificarPago:
+    Select Case Err
+        Case Else
+            MBox "Error nº " & Err & " en ModificarPago" & vbCrLf & Err.Description
+            Resume Salir_ModificarPago
+    End Select
+End Function
+
+
+
+'Public Function ModifPago(intCase As Integer)
+'    On Error GoTo Error_ModifPago
+'    Dim frm As Form, intR As Integer, ctl As Control
+'    Set frm = Screen.ActiveForm
+'    Select Case frm.Name
+'        'Case "frmFichas"
+'        Case Else
+'            Set ctl = Forms(frm.Name)("lstPagos")
+'    End Select
+'
+'    If ctl.ListIndex = -1 Then Exit Function
+'    If ctl.Enabled = False Then Exit Function
+'    Select Case intCase
+'        Case 1
+'            ModificarPago ctl.Value
+'        Case 2
+'            intR = mbox("¿Borrar pago?", vbQuestion + vbYesNo)
+'            If intR = vbYes Then
+'                CurrentDb.Execute "DELETE * FROM tbCajaDet WHERE IdCajaDet = " & ctl.Value, dbFailOnError
+'            End If
+'    End Select
+'    ctl.Requery
+'    If IsOpenForm("frmFichas") Then Forms("frmFichas")("lstPagos").Requery
+'    If IsOpenForm("frmFacturas") Then Forms("frmFacturas")("lstPagos").Requery
+'    If IsOpenForm("frmPagosACaja") Then
+'        Forms("frmPagosACaja")("lstPagos").Requery
+'        Forms("frmPagosACaja")("lstResumen").Requery
+'    End If
+'
+'Salir_ModifPago:
+'    Exit Function
+'Error_ModifPago:
+'    Select Case Err
+'        Case Else
+'            mbox "Error nº " & Err & " en ModifPago" & vbCrLf & Err.Description
+'            Resume Salir_ModifPago
+'    End Select
+'End Function
+
+
+Public Sub ImprimirRecibo(lngIdCajaDet As Long)
+    If True Then 'DameValorParam("RecibosImpresionPor") = 2 Then
+        ImprimirReciboDOS lngIdCajaDet
+        Exit Sub
+    End If
+    If DameValorParam("ImpresionInformes") = 1 Then
+        DoCmd.OpenReport "rptRecibo", , , "IdCajaDet = " & lngIdCajaDet
+    Else
+        DoCmd.OpenReport "rptRecibo", acViewPreview, , "IdCajaDet = " & lngIdCajaDet
+    End If
+End Sub
+
+Public Sub Abrir_Cerrar_Caja()
+        
+    If IsCajaOpen > 0 Then
+        CerrarCaja
+    Else
+        AbrirCaja
+    End If
+End Sub
+
+
+Public Sub TraspasarVentasAHistorico(Optional strDB_destino As String = "", Optional strDB_origen As String = "")
+    On Error GoTo Error_TraspasarVentasAHistorico
+    Dim db_destino As Database, db_origen As Database, strSQL As String, rs As Recordset, rsH As Recordset, i As Integer, j As Integer
+    Dim strTabla As String, lngCont(1 To 10) As Long, strMsg As String
+    Dim intForzarAutonumerico As Integer
+    If strDB_destino = "" Then
+        strDB_destino = DirectorioDe(CurrentDb.Name) & "R4_His.mdb"
+    End If
+    If strDB_origen = "" Then
+        strDB_origen = DirectorioDe(CurrentDb.Name) & "R4_Vta.mdb"
+    End If
+    Set db_destino = OpenDatabase(strDB_destino)
+    Set db_origen = OpenDatabase(strDB_origen)
+    strMsg = "Se han traspasado al histórico de ventas las siguientes tablas:" & vbCrLf
+BucleTablas:
+    i = i + 1
+    Select Case i
+        Case 1
+            strTabla = "tbTickCab"
+            intForzarAutonumerico = True
+        Case 2
+            strMsg = strMsg & strTabla & ": " & lngCont(i - 1) & " registros" & vbCrLf
+            strTabla = "tbTickCab_Cli"
+        Case 3
+            strMsg = strMsg & strTabla & ": " & lngCont(i - 1) & " registros" & vbCrLf
+            strTabla = "tbTickDet"
+            intForzarAutonumerico = True
+        Case 4
+            strMsg = strMsg & strTabla & ": " & lngCont(i - 1) & " registros" & vbCrLf
+            strTabla = "tbTickDet_Notas"
+        Case 5
+            strMsg = strMsg & strTabla & ": " & lngCont(i - 1) & " registros" & vbCrLf
+            strTabla = "tbCajaCab"
+        Case 6
+            strMsg = strMsg & strTabla & ": " & lngCont(i - 1) & " registros" & vbCrLf
+            strTabla = "tbCajaDet"
+        Case 7
+            strMsg = strMsg & strTabla & ": " & lngCont(i - 1) & " registros" & vbCrLf
+            strTabla = "tbCajaDet_Concepto"
+        Case 8
+            strMsg = strMsg & strTabla & ": " & lngCont(i - 1) & " registros" & vbCrLf
+            strTabla = "tbFacturasCab"
+        Case 9
+            strMsg = strMsg & strTabla & ": " & lngCont(i - 1) & " registros" & vbCrLf
+            strTabla = "tbFacturasDet"
+        Case 10
+            strMsg = strMsg & strTabla & ": " & lngCont(i - 1) & " registros" & vbCrLf
+            strTabla = "tbPendientesProcesar"
+        Case Else
+            strMsg = strMsg & strTabla & ": " & lngCont(i - 1) & " registros" & vbCrLf
+            GoTo Salir_TraspasarVentasAHistorico:
+    End Select
+    Set rs = db_origen.OpenRecordset(strTabla, dbOpenSnapshot)
+    Set rsH = db_destino.OpenRecordset(strTabla, dbOpenDynaset)
+    While Not rs.EOF
+        'DoEvents
+        rsH.FindFirst rsH(0).Name & " = " & rs(0)
+        If rsH.NoMatch Then
+            rsH.AddNew
+            rsH(0) = rs(0)
+        Else
+            rsH.Edit
+        End If
+        For j = 1 To rs.Fields.Count - 1
+            rsH(j) = rs(j)
+        Next j
+        rsH.Update
+        lngCont(i) = lngCont(i) + 1
+        SysCmd acSysCmdSetStatus, "Traspasando " & strTabla & ": " & lngCont(i)
+        rs.MoveNext
+    Wend
+    Select Case i
+        Case 4
+            CurrentDb.Execute "DELETE * FROM tbTickCab", dbFailOnError
+        Case 7
+            CurrentDb.Execute "DELETE * FROM tbCajaCab", dbFailOnError
+        Case 9
+            CurrentDb.Execute "DELETE * FROM tbFacturasCab", dbFailOnError
+        Case 10
+            CurrentDb.Execute "DELETE * FROM tbPendientesProcesar", dbFailOnError
+    End Select
+    GoTo BucleTablas
+    
+Salir_TraspasarVentasAHistorico:
+    SysCmd acSysCmdClearStatus
+    MBox strMsg
+    Exit Sub
+Error_TraspasarVentasAHistorico:
+    Select Case Err
+        Case Else
+            MBox "Error nº " & Err & " en TraspasarVentasAHistorico" & vbCrLf & Err.Description
+            Resume Salir_TraspasarVentasAHistorico
+    End Select
+End Sub
+
+Public Sub TiquesDeCaja(lngIdCajaCab As Long, ByRef lngNumTicketDesde As Long, ByRef lngNumTicketHasta As Long)
+    On Error GoTo Error_TiquesDeCaja
+    Dim dtOp As Date, dtCl As Date
+    dtOp = Nz(DLookup("Hora_A", "tbCajaCab", "IdCajaCab = " & lngIdCajaCab), Now)
+    dtCl = Nz(DLookup("Hora_C", "tbCajaCab", "IdCajaCab = " & lngIdCajaCab), Now)
+    lngNumTicketDesde = Nz(DMin("NumTicket", "tbTickCab", "Hora Between " & ComaPunto(CDbl(dtOp)) & " AND " & ComaPunto(CDbl(dtCl))), 0)
+    lngNumTicketHasta = Nz(DMax("NumTicket", "tbTickCab", "Hora Between " & ComaPunto(CDbl(dtOp)) & " AND " & ComaPunto(CDbl(dtCl))), 0)
+    GoTo Salir_TiquesDeCaja
+    
+    
+    Dim strSQL As String, rs As Recordset
+    strSQL = "SELECT  Min(tbTickCab.NumTicket) AS NumTicketDesde, Max(tbTickCab.NumTicket) AS NumTicketHasta"
+    strSQL = strSQL & " FROM tbTickCab INNER JOIN tbCajaDet ON tbTickCab.IdTickCab = tbCajaDet.IdFrom"
+    strSQL = strSQL & " GROUP BY tbCajaDet.IdCajaCab, tbCajaDet.Origen"
+    strSQL = strSQL & " HAVING (((tbCajaDet.IdCajaCab)=" & lngIdCajaCab & ") AND ((tbCajaDet.Origen)='T'));"
+    Set rs = CurrentDb.OpenRecordset(strSQL, dbOpenSnapshot)
+    If rs.EOF Then
+        Dim db As Database
+        Set db = OpenDatabase(DirectorioDe(CurrentDb.Name) & "R4_His.mdb")
+        Set rs = db.OpenRecordset(strSQL, dbOpenSnapshot)
+        If rs.EOF Then
+            lngNumTicketDesde = 0
+            lngNumTicketHasta = 0
+            Exit Sub
+        End If
+    End If
+    lngNumTicketDesde = rs("NumTicketDesde")
+    lngNumTicketHasta = rs("NumTicketHasta")
+Salir_TiquesDeCaja:
+    Exit Sub
+Error_TiquesDeCaja:
+    Select Case Err
+        Case Else
+            MBox "error nº " & Err & " en TiquesDeCaja" & vbCrLf & Err.Description
+            Resume Salir_TiquesDeCaja
+    End Select
+End Sub
+
+
+Public Function WriteDesglose(strXMLDesglose As String, intRetira_Deja As Integer)
+    Dim strXML_r As String, strXML_d As String, strXML_T As String, i As Integer, frm As Form
+    Dim strOpenArgs As String
+    Dim strR As String, strM As String, curM As Currency
+    
+    Dim intMargenIzdo As Integer, intAncho As Integer, curTotalD As Currency
+    intMargenIzdo = Nz(DameValorParam("ListadosMargenIzdo"), 0)
+    intAncho = Nz(DameValorParam("TicketsAncho"), 40) - intMargenIzdo
+    
+    strXML_r = Nz(DimeXML(Nz(strXMLDesglose, ""), "Desglose_Retira"), "")
+    strXML_d = Nz(DimeXML(Nz(strXMLDesglose, ""), "Desglose_Deja"), "")
+    strR = Centra("Desglose de Caja", intAncho) & vbCrLf
+    strR = strR & LlenaChar("-", intAncho) & vbCrLf
+    For i = 1 To 15
+        Select Case i
+            Case 1
+                strM = "0,01 X "
+                curM = 0.01
+            Case 2
+                strM = "0,02 X "
+                curM = 0.02
+            Case 3
+                strM = "0,05 X "
+                curM = 0.05
+            Case 4
+                strM = "0,10 X "
+                curM = 0.1
+            Case 5
+                strM = "0,20 X "
+                curM = 0.2
+            Case 6
+                strM = "0,50 X "
+                curM = 0.5
+            Case 7
+                strM = "1    X "
+                curM = 1
+            Case 8
+                strM = "2    X "
+                curM = 2
+            Case 9
+                strM = "5    X "
+                curM = 5
+            Case 10
+                strM = "10   X "
+                curM = 10
+            Case 11
+                strM = "20   X "
+                curM = 20
+            Case 12
+                strM = "50   X "
+                curM = 50
+            Case 13
+                strM = "100  X "
+                curM = 100
+            Case 14
+                strM = "200  X "
+                curM = 200
+            Case 15
+                strM = "500  X "
+                curM = 500
+        End Select
+        strR = strR & strM & LlenaIzqChar(Format(Nz(DimeXML(strXMLDesglose, "m" & i), 0), "#,##0.00;-#,##0.00;-"), 15, ".")
+        strR = strR & LlenaIzqChar(Format(Nz(DimeXML(strXMLDesglose, "m" & i), 0) * curM, "#,##0.00 €;-#,##0.00 €;- -"), intAncho - 22, ".") & vbCrLf
+        curTotalD = curTotalD + Nz(DimeXML(strXMLDesglose, "m" & i), 0) * curM
+    Next i
+    strR = strR & LlenaChar("-", intAncho) & vbCrLf
+    strR = strR & "Total desglose caja: " & LlenaIzqChar(Format(curTotalD, "currency"), intAncho - Len("Total desglose caja: "), ".") & vbCrLf
+    strR = strR & LlenaChar("-", intAncho) & vbCrLf
+    WriteDesglose = strR
+End Function
+
+
+Public Function Asignar_Serie_y_NumTicket_M(lngIdTickCab As Long, Optional intSerieNormal As Integer = False) As Integer
+    On Error GoTo Error_Asignar_Serie_y_NumTicket_M
+    Dim rs As Recordset, strSQL As String, strSerie As String, lngNumTicket As Long
+    Dim curImporte As Currency, curpagado As Currency, strFP_Visa As String, lngTipoIVA As Long
+    Dim lngNumTicket_Pre As Long, strSerie_Pre As String, intR As Integer
+    Dim curIVA As Currency
+    Dim rs2 As Recordset, strSalbu As String, lngIdCli As Long
+    Static strFP_Metalico As String, strSerieB As String, curMaximoB As Currency, intBsTI As Integer, lngBTipoTique As Long
+    Dim intCuentaTiques  As Integer, intCuentaTiques2  As Integer
+    Dim curSumaTiques  As Currency, curSumaTiques2  As Currency
+    If curMaximoB = 0 Then curMaximoB = Nz(DameValorParam("BMaximo"), 0)
+    If curMaximoB = 0 Then
+        Exit Function
+    End If
+    If intBsTI = 0 Then intBsTI = Nz(DameValorParam("BMaximoSobreTI"), 0)
+    If intBsTI = 0 Then
+        'mbox "Se debe definir intBsTI"
+        Exit Function
+    End If
+    If strSerieB = "" Then strSerieB = Nz(DameValorParam("BSerie"), "")
+    If strSerieB = "" Then Exit Function
+    If lngBTipoTique = 0 Then lngBTipoTique = Nz(DameValorParam("BTipoTique"), 0)
+    If lngBTipoTique = 0 Then Exit Function
+    curImporte = Nz(DLookup("TotalTicket", "tbTickCab", "IdTickCab = " & lngIdTickCab), 0)
+    strSQL = "SELECT * FROM auxSeries WHERE IdTickCab = " & lngIdTickCab
+    Set rs = CurrentDb.OpenRecordset(strSQL, dbOpenDynaset)
+    If rs.EOF Then
+        rs.AddNew
+        rs("IdTickCab") = lngIdTickCab
+    Else
+        rs.Edit
+    End If
+    lngNumTicket_Pre = Nz(DLookup("NumTicket", "tbTickCab", "IdTickCab = " & lngIdTickCab), 0)
+    rs("NumTicket") = lngNumTicket_Pre
+    strSerie_Pre = Nz(DLookup("Serie", "tbTickCab", "IdTickCab = " & lngIdTickCab), 0)
+    rs("Serie") = strSerie_Pre
+    rs("Importe") = curImporte
+    rs.Update
+    If Nz(DLookup("IdTickDet", "qryTickDetForzarSerieB", "IdTickCab=" & lngIdTickCab), 0) <> 0 Then GoTo FormaDePago
+    intCuentaTiques = DCount("IdTickCab", "auxSeries")
+    intCuentaTiques2 = DCount("IdTickCab", "auxSeries", "Serie = '" & strSerieB & "'")
+    curSumaTiques = Nz(DSum("Importe", "auxSeries"), 0)
+    curSumaTiques2 = Nz(DSum("Importe", "auxSeries", "Serie = '" & strSerieB & "'"), 0)
+    If intBsTI = 1 Then
+        If (intCuentaTiques2 + 1) / intCuentaTiques > curMaximoB Then Exit Function
+    Else
+        If (curSumaTiques2 + curImporte) / curSumaTiques > curMaximoB Then Exit Function
+    End If
+FormaDePago:
+    If strFP_Metalico = "" Then strFP_Metalico = Nz(DameValorParam("TPV_FormaPagoMetalico"), "")
+    If strFP_Metalico = "" Then
+        MBox "Se debe definir Forma de Pago Metálico en Parámetros\Aplicación\Tiques"
+        Exit Function
+    End If
+    curpagado = Nz(DSum("Cantidad", "tbCajaDet", "Origen = 'T' AND IdFrom = " & lngIdTickCab), 0)
+    If curImporte > curpagado Then Exit Function 'Si  no se ha acabado de pagar no asigna serie y nº...
+    strSQL = "SELECT tbCajaDet.CodFPago, tbTickDet.IVA"
+'    strSQL = strSQL & " FROM (((tbTickCab INNER JOIN tbTickDet ON tbTickCab.IdTickCab = tbTickDet.IdTickCab) INNER JOIN tbCajaDet ON tbTickCab.IdTickCab = tbCajaDet.IdFrom) INNER JOIN tbArtV ON tbTickDet.IdArtV = tbArtV.IdArtV) INNER JOIN tbTipIVA ON tbArtV.TipoIVA = tbTipIVA.TipoIVA"
+    strSQL = strSQL & " FROM (tbTickCab INNER JOIN tbTickDet ON tbTickCab.IdTickCab = tbTickDet.IdTickCab) INNER JOIN tbCajaDet ON tbTickCab.IdTickCab = tbCajaDet.IdFrom"
+    strSQL = strSQL & " WHERE tbTickCab.IdTickCab=" & lngIdTickCab & " AND tbCajaDet.Origen='T'"
+    strSQL = strSQL & " AND CodFPago <> '" & strFP_Metalico & "'"
+    strSQL = strSQL & " GROUP BY tbCajaDet.CodFPago, tbTickCab.IdTickCab, tbCajaDet.Origen, tbTickDet.IVA"
+    Set rs = CurrentDb.OpenRecordset(strSQL, dbOpenSnapshot)
+    If Not rs.EOF Then Exit Function 'Si no es pago metálico fuera
+    If Nz(DameValorParam("BTraspasarImpresosSN"), False) = False Then
+        If Nz(DLookup("Impreso", "tbTickCab", "IdTickCab = " & lngIdTickCab), False) = True Then Exit Function 'Si se ha impreso fuera
+    End If
+    'Si no es el último tique
+    If lngNumTicket_Pre <> DMax("NumTicket", "tbTickCab", "Serie = '" & DLookup("Serie", "tbTickCab", "IdTickCab = " & lngIdTickCab) & "'") Then
+        Exit Function
+    End If
+    'Excepciones
+    strSQL = "SELECT NP FROM cfgParam WHERE NP Like 'Salbu.*'"
+    Set rs = CurrentDb.OpenRecordset(strSQL, dbOpenSnapshot)
+    While Not rs.EOF
+        strSalbu = Mid(rs("NP"), 7)
+        Select Case Left(strSalbu, 3)
+            Case "SEC", "FAM", "ART"
+                strSQL = "SELECT tbSec_Art.IdSeccion, tbFam_Art.IdFamilia, tbArtV.IdArtV"
+                strSQL = strSQL & " FROM tbTickDet INNER JOIN ((tbSec_Art RIGHT JOIN tbFam_Art ON tbSec_Art.IdSeccion = tbFam_Art.IdSeccion) RIGHT JOIN tbArtV ON tbFam_Art.IdFamilia = tbArtV.IdFamilia) ON tbTickDet.IdArtV = tbArtV.IdArtV"
+                strSQL = strSQL & " WHERE tbTickDet.IdTickCab=" & lngIdTickCab
+                If Left(strSalbu, 3) = "SEC" Then
+                    strSQL = strSQL & " AND tbSec_Art.IdSeccion = " & Mid(strSalbu, 5)
+                ElseIf Left(strSalbu, 3) = "FAM" Then
+                    strSQL = strSQL & " AND tbFam_Art.IdFamilia = " & Mid(strSalbu, 5)
+                Else
+                    strSQL = strSQL & " AND tbArtV.IdArtV = " & Mid(strSalbu, 5)
+                End If
+                Set rs2 = CurrentDb.OpenRecordset(strSQL, dbOpenSnapshot)
+                If Not rs2.EOF Then Exit Function
+            Case "TIP"
+                If DLookup("CodTipTick", "tbTickCab", "IdTickCab = " & lngIdTickCab) = CLng(Mid(strSalbu, 5)) Then Exit Function
+            Case "TRF"
+                If DLookup("IdTrf", "tbTickCab", "IdTickCab = " & lngIdTickCab) = CLng(Mid(strSalbu, 5)) Then Exit Function
+            Case "BRM"
+                If DLookup("IdBrm", "tbTickCab", "IdTickCab = " & lngIdTickCab) = CLng(Mid(strSalbu, 5)) Then Exit Function
+            Case "CLI"
+                lngIdCli = Nz(DLookup("IdCliente", "tbTickCab_Cli", "IdTickCab = " & lngIdTickCab), -1)
+                If lngIdCli <> -1 Then
+                    If CLng(Mid(strSalbu, 5)) = 0 Then
+                        Exit Function
+                    Else
+                        If lngIdCli = CLng(Mid(strSalbu, 5)) Then Exit Function
+                    End If
+                End If
+        End Select
+        rs.MoveNext
+    Wend
+    strSerie = strSerieB
+    
+    lngNumTicket = Nz(DameValorParam("UltimoNumTicket_Serie_" & strSerie), 0) + 1
+    strSQL = "UPDATE tbTickCab SET NumTicket = " & lngNumTicket & ", Serie = '" & strSerie & "'"
+    strSQL = strSQL & ", CodTipTick = " & lngBTipoTique
+    strSQL = strSQL & " WHERE IdTickCab = " & lngIdTickCab
+    CurrentDb.Execute strSQL, dbFailOnError
+    PonValorParam "UltimoNumTicket_Serie_" & strSerie, lngNumTicket, 4
+    PonValorParam "UltimoNumeroTique", lngNumTicket_Pre - 1, 4
+    strSQL = "UPDATE auxSeries SET NumTicket = " & lngNumTicket & ", Serie = '" & strSerie & "'"
+    strSQL = strSQL & " WHERE IdTickCab = " & lngIdTickCab
+    CurrentDb.Execute strSQL, dbFailOnError
+    
+    Asignar_Serie_y_NumTicket_M = True
+Salir_Asignar_Serie_y_NumTicket_M:
+    Exit Function
+Error_Asignar_Serie_y_NumTicket_M:
+    Select Case Err
+        Case Else
+            MBox "Error nº " & Err & " en Asignar_Serie_y_NumTicket_M" & vbCrLf & Err.Description
+            Resume Salir_Asignar_Serie_y_NumTicket_M
+    End Select
+End Function
+
+Public Function Asignar_Serie_y_NumTicket_Ochoa(lngIdTickCab As Long) As Integer
+    On Error GoTo Error_Asignar_Serie_y_NumTicket_Ochoa
+    Dim rs As Recordset, strSQL As String, strSerie As String, lngNumTicket As Long, strSerie_Pre As String
+    Dim curImporte As Currency, curpagado As Currency, strFP_Metalico As String, strFP_Visa As String, lngTipoIVA As Long
+    Dim lngNumTicket_Pre As Long, intR As Integer
+    Dim curIVA As Currency
+    Static lngTsM As Long, lngTsO As Long
+    Static curMaximoB As Currency, intBsTI As Integer, lngBTipoTique As Long
+    Dim rs2 As Recordset
+    Dim intCuentaTiques  As Integer, intCuentaTiques2  As Integer
+    Dim curSumaTiques  As Currency, curSumaTiques2  As Currency
+    
+    curImporte = Nz(DLookup("TotalTicket", "tbTickCab", "IdTickCab = " & lngIdTickCab), 0)
+    curpagado = Nz(DSum("Cantidad", "tbCajaDet", "Origen = 'T' AND IdFrom = " & lngIdTickCab), 0)
+    If curImporte > curpagado Then Exit Function 'Si  no se ha acabado de pagar no asigna serie y nº...
+    strSQL = "SELECT tbCajaDet.CodFPago, tbTickDet.IVA"
+'    strSQL = strSQL & " FROM (((tbTickCab INNER JOIN tbTickDet ON tbTickCab.IdTickCab = tbTickDet.IdTickCab) INNER JOIN tbCajaDet ON tbTickCab.IdTickCab = tbCajaDet.IdFrom) INNER JOIN tbArtV ON tbTickDet.IdArtV = tbArtV.IdArtV) INNER JOIN tbTipIVA ON tbArtV.TipoIVA = tbTipIVA.TipoIVA"
+    strSQL = strSQL & " FROM (tbTickCab INNER JOIN tbTickDet ON tbTickCab.IdTickCab = tbTickDet.IdTickCab) INNER JOIN tbCajaDet ON tbTickCab.IdTickCab = tbCajaDet.IdFrom"
+    strSQL = strSQL & " GROUP BY tbCajaDet.CodFPago, tbTickCab.IdTickCab, tbCajaDet.Origen, tbTickDet.IVA"
+    strSQL = strSQL & " HAVING tbTickCab.IdTickCab=" & lngIdTickCab & " AND tbCajaDet.Origen='T'"
+    Set rs = CurrentDb.OpenRecordset(strSQL, dbOpenSnapshot)
+    strFP_Metalico = Nz(DameValorParam("TPV_FormaPagoMetalico"), "")
+    If strFP_Metalico = "" Then
+        MBox "Se debe definir Forma de Pago Metálico en Parámetros\Aplicación\Tiques"
+        Exit Function
+    End If
+    strFP_Visa = Nz(DameValorParam("TPV_FormaPagoTarjeta"), "")
+    If strFP_Visa = "" Then
+        MBox "Se debe definir Forma de Pago Tarjeta en Parámetros\Aplicación\Tiques"
+        Exit Function
+    End If
+    rs.FindFirst "CodFPago ='" & strFP_Visa & "'"
+    If rs.NoMatch Then
+        If curMaximoB = 0 Then curMaximoB = Nz(DameValorParam("BMaximo"), 0)
+        If curMaximoB = 0 Then
+            GoTo SerieM_no
+        End If
+        If intBsTI = 0 Then intBsTI = Nz(DameValorParam("BMaximoSobreTI"), 0)
+        If intBsTI = 0 Then
+            'mbox "Se debe definir intBsTI"
+            GoTo SerieM_no
+        End If
+        
+        curImporte = Nz(DLookup("TotalTicket", "tbTickCab", "IdTickCab = " & lngIdTickCab), 0)
+        strSQL = "SELECT * FROM auxSeries WHERE IdTickCab = " & lngIdTickCab
+        Set rs2 = CurrentDb.OpenRecordset(strSQL, dbOpenDynaset)
+        If rs2.EOF Then
+            rs2.AddNew
+            rs2("IdTickCab") = lngIdTickCab
+        Else
+            rs2.Edit
+        End If
+        lngNumTicket_Pre = Nz(DLookup("NumTicket", "tbTickCab", "IdTickCab = " & lngIdTickCab), 0)
+        rs2("NumTicket") = lngNumTicket_Pre
+        strSerie_Pre = Nz(DLookup("Serie", "tbTickCab", "IdTickCab = " & lngIdTickCab), "")
+        rs2("Serie") = strSerie_Pre
+        rs2("Importe") = curImporte
+        rs2.Update
+            
+        intCuentaTiques = DCount("IdTickCab", "auxSeries")
+        intCuentaTiques2 = DCount("IdTickCab", "auxSeries", "Serie = 'M'")
+        curSumaTiques = Nz(DSum("Importe", "auxSeries"), 0)
+        curSumaTiques2 = Nz(DSum("Importe", "auxSeries", "Serie = 'M'"), 0)
+        If intBsTI = 1 Then
+            If (intCuentaTiques2 + 1) / intCuentaTiques > curMaximoB Then GoTo SerieM_no
+        Else
+            If (curSumaTiques2 + curImporte) / curSumaTiques > curMaximoB Then GoTo SerieM_no
+        End If
+        strSerie = "M"
+    Else
+SerieM_no:
+        rs.MoveFirst
+        curIVA = -1
+        While Not rs.EOF
+            If curIVA = -1 Then curIVA = rs("IVA")
+            If curIVA <> rs("IVA") Then
+                strSerie = "H"
+                rs.MoveLast
+            End If
+            rs.MoveNext
+        Wend
+        If strSerie = "" Then
+            lngTipoIVA = Nz(DLookup("TipoIVA", "tbTipIVA", "IVA = " & ComaPunto(curIVA)), -1)
+            Select Case lngTipoIVA
+                Case 3 '16%
+                    strSerie = "C"
+                Case 2 '7%
+                    strSerie = "D"
+                Case Else
+                    strSerie = "H"
+            End Select
+        End If
+    End If
+    strSerie_Pre = Nz(DLookup("Serie", "tbTickCab", "IdTickCab = " & lngIdTickCab), "")
+    If strSerie_Pre <> "" Then
+        If strSerie_Pre = strSerie Then
+            Exit Function
+        Else
+            lngNumTicket_Pre = Nz(DLookup("NumTicket", "tbTickCab", "IdTickCab = " & lngIdTickCab), 0)
+            If lngNumTicket_Pre = Nz(DameValorParam("PuestoUltimoNumTicket_Serie_" & strSerie_Pre), 0) Then
+                intR = MBox("Se va a modificar Serie del tique", vbExclamation + vbOKCancel)
+                If intR = vbCancel Then Exit Function
+                PonValorParam "PuestoUltimoNumTicket_Serie_" & strSerie_Pre, lngNumTicket_Pre - 1, 4
+            Else
+                MBox "No se puede modificar Serie de tique por no ser el último de la Serie: " & strSerie_Pre, vbApplicationModal
+                Exit Function
+            End If
+        End If
+     End If
+     lngNumTicket = Nz(DameValorParam("PuestoUltimoNumTicket_Serie_" & strSerie), 0) + 1
+     strSQL = "UPDATE tbTickCab SET NumTicket = " & lngNumTicket & ", Serie = '" & strSerie & "'"
+     strSQL = strSQL & " WHERE IdTickCab = " & lngIdTickCab
+     CurrentDb.Execute strSQL, dbFailOnError
+     PonValorParam "PuestoUltimoNumTicket_Serie_" & strSerie, lngNumTicket, 4
+     strSQL = "UPDATE auxSeries SET NumTicket = " & lngNumTicket & ", Serie = '" & strSerie & "'"
+     strSQL = strSQL & " WHERE IdTickCab = " & lngIdTickCab
+     CurrentDb.Execute strSQL, dbFailOnError
+     
+     'marcar pagos de tique...
+     strSQL = "UPDATE tbCajaDet LEFT JOIN tbCajaDet_Concepto ON tbCajaDet.IdCajaDet = tbCajaDet_Concepto.IdCajaDet SET tbCajaDet_Concepto.Concepto = 'Pago tique " & strSerie & lngNumTicket & "'"
+     strSQL = strSQL & " WHERE (((tbCajaDet.Origen)='T') AND ((tbCajaDet.IdFrom)=" & lngIdTickCab & "));"
+     'CurrentDb.Execute strSQL, dbFailOnError
+     CurrentDb.Execute strSQL
+     Asignar_Serie_y_NumTicket_Ochoa = True
+Salir_Asignar_Serie_y_NumTicket_Ochoa:
+        Exit Function
+Error_Asignar_Serie_y_NumTicket_Ochoa:
+    
+    Select Case Err
+        Case Else
+            MBox "Error nº " & Err & " en Asignar_Serie_y_NumTicket_Ochoa" & vbCrLf & Err.Description
+            Resume Salir_Asignar_Serie_y_NumTicket_Ochoa
+    End Select
+End Function
+
+Public Sub Actualizar_auxRegistroCajaCabDet(Optional lngIdCajaCab As Long = 0, Optional lngIdPuesto As Long = 0, Optional dtDesde_A As Date = 0, Optional dtHasta_A As Date = 0, Optional strFechaA_C As String = "A")
+    Dim i As Integer, intPas As Integer
+    Dim rs As Recordset, rsAux As Recordset, rsFP As Recordset, rsAuxFP As Recordset, rsFi As Recordset
+    Dim strSQL As String, strSQL0 As String, strSQL1 As String, strSQL2 As String, strSQL3 As String, lngL As Long
+    Dim lngComensales As Long
+    Dim db As Database, intR As Integer, rsPu As Recordset, intHA As Integer, strMDB As String, strMsg As String
+    On Error GoTo Error_Actualizar_auxRegistroCajaCabDet
+    
+    strSQL = " FROM tbCajaCab "
+    strSQL = strSQL & " WHERE true"
+    If lngIdCajaCab <> 0 Then
+        strSQL = strSQL & " AND IdCajaCab = " & lngIdCajaCab
+    End If
+    If lngIdPuesto <> 0 Then
+        strSQL = strSQL & " AND IdPuesto = " & lngIdPuesto
+    End If
+    If dtDesde_A > 0 Then
+        strSQL = strSQL & " AND tbCajaCab.Fecha_" & strFechaA_C & " >= #" & Format(dtDesde_A, "mm/dd/yyyy") & "#"
+    End If
+    If dtHasta_A > 0 Then
+        strSQL = strSQL & " AND tbCajaCab.Fecha_" & strFechaA_C & " <= #" & Format(dtHasta_A, "mm/dd/yyyy") & "#"
+    End If
+    strSQL = strSQL & " ORDER BY tbCajaCab.Hora_A"
+    strSQL0 = strSQL
+    
+    strSQL = " FROM tbCajaCab INNER JOIN tbCajaDet ON tbCajaCab.IdCajaCab = tbCajaDet.IdCajaCab"
+    strSQL = strSQL & " WHERE true"
+    If lngIdCajaCab <> 0 Then
+        strSQL = strSQL & " AND tbCajaCab.IdCajaCab = " & lngIdCajaCab
+    End If
+    If lngIdPuesto <> 0 Then
+        strSQL = strSQL & " AND IdPuesto = " & lngIdPuesto
+    End If
+    If dtDesde_A > 0 Then
+        strSQL = strSQL & " AND tbCajaCab.Fecha_A >= #" & Format(dtDesde_A, "mm/dd/yyyy") & "#"
+    End If
+    If dtHasta_A > 0 Then
+        strSQL = strSQL & " AND tbCajaCab.Fecha_A <= #" & Format(dtHasta_A, "mm/dd/yyyy") & "#"
+    End If
+    strSQL = strSQL & " ORDER BY IdCajaDet"
+    strSQL1 = strSQL
+    
+    
+    Dim strNumFac As String, intLin As Integer, dtFec As Date, strNIF As String, strCli As String
+    Dim curTotal As Currency, intPrimera As Integer, strAux As String
+    strAux = DirectorioDe(CurrentDb.Name) & "R4AUX.mdb"
+
+    'Rellenar auxFiles
+    
+    
+    CurrentDb.Execute "DELETE * FROM auxFiles", dbFailOnError
+        
+    If lngIdPuesto = 0 Then
+        Pon_auxFiles_Historicos dtDesde_A, dtHasta_A, lngIdPuesto, , False, True
+    Else
+        strSQL = "SELECT IdPuesto, CarpetaBase FROM cfgPuestos"
+        strSQL = strSQL & " WHERE IdPuesto = " & lngIdPuesto
+        Set rsPu = CurrentDb.OpenRecordset(strSQL, dbOpenSnapshot)
+        While Not rsPu.EOF
+            Pon_auxFiles_Historicos dtDesde_A, dtHasta_A, rsPu("IdPuesto"), , False, True
+            rsPu.MoveNext
+        Wend
+    End If
+    intPrimera = True
+    Set rsFi = CurrentDb.OpenRecordset("SELECT * FROM auxFiles ORDER By Orden")
+    While Not rsFi.EOF
+        strMDB = rsFi("strMdb")
+        SysCmd acSysCmdSetStatus, "Leyendo fichero histórico: " & strMDB
+        Set db = OpenDatabase(strMDB)
+        
+        EliminarTabla strMDB, "auxRegistroCajaCab"
+        db.Execute "SELECT tbCajaCab.*" & " INTO auxRegistroCajaCab IN '" & strMDB & "' " & strSQL0, dbFailOnError
+        VincularNuevaTabla strMDB, "auxRegistroCajaCab", "auxRegistroCajaCab__"
+        
+        EliminarTabla strMDB, "auxRegistroCajaDet"
+        db.Execute "SELECT tbCajaDet.*" & " INTO auxRegistroCajaDet IN '" & strMDB & "' " & strSQL1, dbFailOnError
+        VincularNuevaTabla strMDB, "auxRegistroCajaDet", "auxRegistroCajaDet__"
+        
+        If intPrimera Then
+            EliminarTabla strAux, "auxRegistroCajaCab"
+            strSQL = "SELECT *, '" & strMDB & "' AS FileMDB INTO auxRegistroCajaCab IN '" & strAux & "' FROM auxRegistroCajaCab__"
+        Else
+            strSQL = "INSERT INTO auxRegistroCajaCab SELECT  * , '" & strMDB & "' AS FileMDB FROM auxRegistroCajaCab__"
+        End If
+        CurrentDb.Execute strSQL, dbFailOnError
+        
+        If intPrimera Then
+            EliminarTabla strAux, "auxRegistroCajaDet"
+            strSQL = "SELECT *, '" & strMDB & "' AS FileMDB INTO auxRegistroCajaDet IN '" & strAux & "' FROM auxRegistroCajaDet__"
+        Else
+            strSQL = "INSERT INTO auxRegistroCajaDet SELECT  * , '" & strMDB & "' AS FileMDB FROM auxRegistroCajaDet__"
+        End If
+        CurrentDb.Execute strSQL, dbFailOnError
+        
+        intPrimera = False
+SiguienteFile:
+        rsFi.MoveNext
+    Wend
+Salir_Actualizar_auxRegistroCajaCabDet:
+    SysCmd acSysCmdClearStatus
+    Exit Sub
+Error_Actualizar_auxRegistroCajaCabDet:
+    Select Case Err
+        Case 3044
+            strMsg = strMsg & "Error nº " & Err & ": " & Err.Description & vbCrLf
+            GoTo SiguienteFile
+        Case Else
+            MBox "Error nº " & Err & vbCrLf & Err.Description & vbCrLf & "En Actualizar_auxRegistroCajaCabDet"
+    End Select
+    Resume Salir_Actualizar_auxRegistroCajaCabDet
+    Resume Next
+End Sub
+
+Public Sub ImprimirCierreDeCaja(lngIdCajaCab As Long, _
+                                lngIdPuesto As Long, _
+                                dtFechaApertura As Date, _
+                                Optional intActualizar_auxRegistroCajaCab As Integer = True, _
+                                Optional intImprimirAlBlocDeNotas As Integer = False, _
+                                Optional strFile As String = "Cierre_Caja", _
+                                Optional intNoMostrarEnPantalla As Integer = False)
+    On Error GoTo HandleError
+    If intActualizar_auxRegistroCajaCab Then Actualizar_auxRegistroCajaCabDet lngIdCajaCab, lngIdPuesto, dtFechaApertura, dtFechaApertura
+    Dim strTitulo As String, rs As Recordset
+    Set rs = CurrentDb.OpenRecordset("SELECT * FROM auxRegistroCajaCab", dbOpenSnapshot)
+    rs.FindFirst "IdCajaCab = " & lngIdCajaCab & " AND IdPuesto= " & lngIdPuesto
+    If rs.NoMatch Then
+        MBox "No se encontró caja"
+        Exit Sub
+    End If
+    strTitulo = Centra("CIERRE DE CAJA", 40) & vbCrLf _
+                & DameValorParam("EstablecimientoNombre") & vbCrLf _
+                & "Puesto: " & DLookup("NombrePuesto", "cfgPuestos", "IdPuesto = " & lngIdPuesto) & vbCrLf _
+                & "Cierre Caja: " & rs("Hora_C") & vbCrLf _
+                & rs("Observaciones")
+    ImprimirSQL_DOS1 "", strTitulo, "", , , IIf(intImprimirAlBlocDeNotas = True, True, 88), True, strFile, , intNoMostrarEnPantalla
+    
+    
+HandleExit:
+    Exit Sub
+HandleError:
+    MBox Err.Description
+    Resume HandleExit
+End Sub
+
+Public Sub ImprimirZ(dt As Date, lngIdPuesto As Long, Optional intEnCarpetaPuesto As Integer = False _
+                        , Optional intNoMostrarEnPantalla As Integer = False, Optional ByRef strFile As String = "Ventas" _
+                        , Optional iAlBloc As Integer = 88)
+    Dim strSQL As String
+    RellenarZs dt, lngIdPuesto, , ""
+    strSQL = "SELECT tbZs.TextoLinea as [Ventas del día]"
+    strSQL = strSQL & " FROM tbZs"
+    strSQL = strSQL & " WHERE tbZs.Fecha = #" & Format(dt, "mm/dd/yyyy") & "#"
+    strSQL = strSQL & " ORDER BY tbZs.linea;"
+    ImprimirSQL_DOS1 strSQL, "", "1,40,1,1,0", , , iAlBloc, , strFile, , intNoMostrarEnPantalla
+End Sub
+
+
+Public Function DimeDesgloseMoneda(ByRef strXML As String) As Currency
+    'Devuelve Total del importe y XML de la forma de entregar
+    '<m1 - m15>n</m1 - m15> donde m1= 0,01 € y m15 = 500 € y n es la cantidad de monedas-billetes
+    On Error GoTo Error_DimeDesgloseMoneda
+    Dim curR As Currency, i As Integer, frm As Form
+    DoCmd.OpenForm "frmMonedaCuenta", , , , , acDialog
+    If Not IsOpenForm("frmMonedaCuenta") Then Exit Function
+    Set frm = Forms("frmMonedaCuenta")
+    curR = frm("txtTotal")
+    For i = 1 To 15
+        If IsNumeric(frm("lbl" & i).Caption) Then
+            PonXML strXML, "m" & i, frm("lbl" & i).Caption
+        Else
+            PonXML strXML, "m" & i, 0
+        End If
+    Next i
+    Set frm = Nothing
+    DoCmd.Close acForm, "frmMonedaCuenta"
+    DimeDesgloseMoneda = curR
+Salir_DimeDesgloseMoneda:
+    Exit Function
+Error_DimeDesgloseMoneda:
+    Select Case Err
+        Case Else
+            MBox "Error nº " & Err & " en DimeDesgloseMoneda" & vbCrLf & Err.Description
+            Resume Salir_DimeDesgloseMoneda
+    End Select
+End Function
+
+Public Sub PonFormaPagadoTiques(dbT As Database, dbP As Database, Optional lngIdTickCab As Long = 0, Optional intSoloPendientesPago As Integer = False)
+    On Error GoTo HandleError
+    'Dim dbT As Database, dbP As Database
+    Dim strSQL As String, rsT As Recordset, rsP  As Recordset, y As Long, z As Long
+    Dim curTotalPagado As Currency, strFormaPagado As String
+    'Set dbT = OpenDatabase(strMDB_tiques)
+    'Set dbP = OpenDatabase(strMDB_pagos)
+    strSQL = "SELECT * FROM tbTickCab WHERE True"
+    If lngIdTickCab <> 0 Then strSQL = strSQL & " AND IdTickCab = " & lngIdTickCab
+    If intSoloPendientesPago Then strSQL = strSQL & " AND FormaPagado Is Null"
+    Set rsT = dbT.OpenRecordset(strSQL, dbOpenDynaset)
+    'strSQL = "SELECT tbCajaDet.Cantidad, tbCajaDet.IdFrom, tbCajaDet.Origen, tbCajaDet.CodFPago, tbFPago.Descripcion as FPago"
+    'strSQL = strSQL & " FROM tbCajaDet LEFT JOIN tbFPago ON tbCajaDet.CodFPago = tbFPago.CodFPago;"
+    'If lngIdTickCab <> 0 Then strSQL = strSQL & " WHERE IdFrom = " & lngIdTickCab
+    'Set rsP = dbP.OpenRecordset(strSQL, dbOpenSnapshot)
+    If Not rsT.EOF Then
+        rsT.MoveLast
+        rsT.MoveFirst
+    End If
+    z = rsT.RecordCount
+    While Not rsT.EOF
+        curTotalPagado = 0: strFormaPagado = ""
+        strSQL = "SELECT tbCajaDet.Cantidad, tbCajaDet.IdFrom, tbCajaDet.Origen, tbCajaDet.CodFPago, tbFPago.Descripcion as FPago"
+        strSQL = strSQL & " FROM tbCajaDet LEFT JOIN tbFPago ON tbCajaDet.CodFPago = tbFPago.CodFPago"
+        strSQL = strSQL & " WHERE Origen = 'T' AND IdFrom = " & rsT("IdTickCab")
+        Set rsP = dbP.OpenRecordset(strSQL, dbOpenSnapshot)
+        While Not rsP.EOF
+            curTotalPagado = curTotalPagado + rsP("Cantidad")
+            If strFormaPagado = "" Then
+                strFormaPagado = Nz(rsP("FPago"), "?")
+            ElseIf strFormaPagado <> Nz(rsP("FPago"), "?") Then
+                strFormaPagado = "+ varias"
+            End If
+            rsP.MoveNext
+        Wend
+        
+        
+        rsT.Edit
+        rsT("TotalPagado") = curTotalPagado
+        rsT("FormaPagado") = IIf(strFormaPagado = "", Null, strFormaPagado)
+        rsT.Update
+        y = y + 1
+        SysCmd acSysCmdSetStatus, "Actualizando formas de pago de tiques " & y & "/" & z
+        rsT.MoveNext
+        
+    Wend
+    SysCmd acSysCmdClearStatus
+    'mbox "Se actualizaron " & Y & " formas de pago de " & z & " tiques", vbInformation
+HandleExit:
+    Exit Sub
+HandleError:
+    MBox Err.Description
+    Resume HandleExit
+End Sub
+
+
+Sub papa()
+    Dim dbT As Database, dbP As Database
+    Set dbT = OpenDatabase("D:\_DOCS1_\_Panaderias\Gelee\R4\Historicos_2019\R4_His_2019_09P15_.mdb")
+    Set dbP = OpenDatabase("D:\_DOCS1_\_Panaderias\Gelee\R4\Historicos_2019\R4_His_2019_09P15_.mdb")
+    PonFormaPagadoTiques dbT, dbP
+End Sub

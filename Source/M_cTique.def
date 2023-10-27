@@ -1,0 +1,3381 @@
+Attribute VB_GlobalNameSpace = False
+Attribute VB_Creatable = False
+Attribute VB_PredeclaredId = False
+Attribute VB_Exposed = False
+Option Compare Database
+Option Explicit
+
+    Private DbName As String, IsCurrentDb As Boolean
+    Private IdTickCab As Long, IdPuesto As Long, Serie As String, NumTique As Long
+    Private FechaTiq As Date
+    Private FechaIni As Date
+    Private FechaFin As Date
+    Private IVAincSN As Boolean
+    Private RecEqSN As Boolean
+    Private IdTarifa As Long
+        Private Tarifa As String
+    Private CodTipTick As Long
+        Private TipoTique As String
+        Private ComandaPorImpresoraS As Boolean
+    Private IdBarm As Long
+        Private Atiende As String
+    Private IdLugar As Long
+        Private Mesa As String
+    Private TotalBase As Currency
+    Private IVA_Cab As Variant
+    Private TotalIVA As Currency
+    Private RE_Cab As Variant
+    Private TotalRE As Currency
+    Private TotalTique As Currency
+    Private TotalPagado As Currency
+    Private DesglIVA As String
+    Private Comensales As Integer
+    Private TotalCantidad As Integer
+    Private Impreso As Boolean
+    Private IdCliente As Long
+    Private NIF As String
+    Private CabeceraTicket As String
+    Private IdFactura As Long
+        Private NumFactura As String
+    Private PendienteEnviarComanda As Boolean
+    Private Hecho As Integer
+    Private CodEstadoT As Integer
+        Private EstadoTique As String
+        Private ColorET As Long
+    
+    Private IsCli As Integer
+    Private Type TickDet
+        IdTickDet As Long
+'        IdTickCab As Long
+        IdArtV As Long
+        Orden As Currency
+        Cantidad As Currency
+        Concepto As String
+        Precio As Currency
+        IVA As Currency
+        RecEq As Currency
+        Comanda As String
+        DtoSN As Boolean
+        EnviarComanda As Boolean
+        EnComanda As Integer
+        InvitacionSN As Boolean
+        IdDestino As Long
+        Nota As String
+        Suplemento As Currency
+        RowSource As String
+        Borrar As Boolean
+        Posiciones As String
+        PesoSN As Boolean
+    End Type
+    Private Type CajaDet
+        IdCajaDet As Long
+        IdCajaCab As Long
+        Fecha As Date
+        Cantidad As Currency
+        CodFPago As String
+        FormaPago As String
+        Entrega As Currency
+        Devolucion As Currency
+    End Type
+    Private Detalle() As TickDet
+    Private BorrarDetalle() As TickDet
+    Private Pagos() As CajaDet
+    Private DesgloseIVA As String
+    Private DesglosePagos As String
+    Private IsLoaded As Integer, IVAsLoaded As Integer
+    Private gintDetalleSelect As Integer
+    Private gintIvaInc_Pre As Integer
+    Private curIVAs() As Currency
+    Private curREs() As Currency
+    Private gdb As Database
+    Private Crono As Integer
+    Private UltimaComandaNum As Long
+    Private IdComedor As Long
+    Private EmailCliente As String
+    
+    Dim gintTPVsegundosCronometro As Integer
+    Dim gstrSerieMesas As String
+        
+''''''''''''''''''''''
+' Name property
+''''''''''''''''''''''
+
+Public Property Get IdTickCab_() As Long
+    IdTickCab_ = IdTickCab
+End Property
+
+Public Property Let IdTickCab_(value As Long)
+    IdTickCab = value
+    On Error Resume Next
+    'Forms("frmTPV").glngIdTickCab = value
+End Property
+
+Public Property Get IdPuesto_() As Long
+    IdPuesto_ = IdPuesto
+End Property
+
+Public Property Let IdPuesto_(value As Long)
+    IdPuesto = value
+End Property
+
+Public Property Get LineasDetalle_() As Integer
+    LineasDetalle_ = UBound(Detalle)
+End Property
+
+Public Property Get NumTique_() As Long
+    NumTique_ = NumTique
+End Property
+
+Public Property Get Serie_() As String
+    Serie_ = Serie
+End Property
+
+Public Property Let Serie_(value As String)
+    Serie = value
+End Property
+
+Public Property Get IdArtV_(iDet As Integer) As Long
+    IdArtV_ = Detalle(iDet).IdArtV
+End Property
+
+Public Property Get Concepto_(iDet As Integer) As String
+    Concepto_ = Detalle(iDet).Concepto
+End Property
+
+Public Property Let Concepto_(iDet As Integer, value As String)
+    Detalle(iDet).Concepto = value
+    PonDetalleRS iDet
+End Property
+
+Public Property Get Precio_(iDet As Integer) As Currency
+    Precio_ = Detalle(iDet).Precio
+End Property
+
+Public Property Let Precio_(iDet As Integer, value As Currency)
+    Detalle(iDet).Precio = value
+    PonDetalleRS iDet
+End Property
+
+Public Property Get Nota_(iDet As Integer) As String
+    Nota_ = Detalle(iDet).Nota
+End Property
+
+Public Property Let Nota_(iDet As Integer, value As String)
+    Detalle(iDet).Nota = value
+End Property
+
+Public Property Get Orden_(iDet As Integer) As Currency
+    Orden_ = Detalle(iDet).Orden
+End Property
+
+Public Property Let Orden_(iDet As Integer, value As Currency)
+    Detalle(iDet).Orden = value
+End Property
+
+'Public Property Get Posiciones_(iDet As Integer) As String
+'    Posiciones_ = Detalle(iDet).Posiciones
+'End Property
+
+'Public Property Let Posiciones_(iDet As Integer, value As String)
+'    Detalle(iDet).Posiciones = value
+'End Property
+
+Public Property Get Suplemento_(iDet As Integer) As Currency
+    Suplemento_ = Detalle(iDet).Suplemento
+End Property
+
+Public Property Let Suplemento_(iDet As Integer, value As Currency)
+    Detalle(iDet).Suplemento = value
+    PonDetalleRS iDet
+End Property
+
+Public Property Get Cantidad_(iDet As Integer) As Currency
+    Cantidad_ = Detalle(iDet).Cantidad
+End Property
+
+Public Property Let Cantidad_(iDet As Integer, value As Currency)
+    Detalle(iDet).Cantidad = value
+    PonDetalleRS iDet
+End Property
+
+Public Property Get InvitacionSN_(iDet As Integer) As Boolean
+    InvitacionSN_ = Detalle(iDet).InvitacionSN
+End Property
+
+Public Property Let InvitacionSN_(iDet As Integer, value As Boolean)
+    Detalle(iDet).InvitacionSN = value
+    PonDetalleRS iDet
+End Property
+
+Public Property Get EnComanda_(iDet As Integer) As Long
+    EnComanda_ = Detalle(iDet).EnComanda
+End Property
+
+Public Property Get Comanda_(iDet As Integer) As String
+    Comanda_ = Detalle(iDet).Comanda
+End Property
+
+Public Property Let Comanda_(iDet As Integer, value As String)
+        Detalle(iDet).Comanda = value
+    Select Case value
+        Case "/"
+            CurrentDb.Execute "UPDATE tbTickDet SET Comanda = '/' WHERE IdTickDet = " & Me.IdTickDet_(iDet)
+        Case "X", "", " "
+        Case Else
+            Detalle(iDet).EnviarComanda = True
+            Detalle(iDet).EnComanda = 0
+    End Select
+    PonDetalleRS iDet
+End Property
+
+Public Property Get EnviarComanda_(iDet As Integer) As Integer
+    EnviarComanda_ = Detalle(iDet).EnviarComanda
+End Property
+
+Public Property Get IdDestino_(iDet As Integer) As Long
+    IdDestino_ = Detalle(iDet).IdDestino
+End Property
+
+Public Property Let IdDestino_(iDet As Integer, value As Long)
+    Detalle(iDet).IdDestino = value
+End Property
+
+Public Property Get gintDetalleSelect_() As Integer
+    gintDetalleSelect_ = gintDetalleSelect
+End Property
+
+Public Property Let gintDetalleSelect_(value As Integer)
+    gintDetalleSelect = value
+End Property
+
+Public Property Get IdCliente_() As Long
+    IdCliente_ = IdCliente
+End Property
+
+Public Property Let IdCliente_(value As Long)
+    IdCliente = value
+    EmailCliente = Nz(DLookup("Email", "tbClientes", "IdCliente = " & value), "")
+End Property
+
+Public Property Get EmailCliente_() As String
+    EmailCliente_ = EmailCliente
+End Property
+
+Public Property Get IdTickDet_(iDet As Integer) As String
+    IdTickDet_ = Detalle(iDet).IdTickDet
+End Property
+
+Public Property Get NIF_() As String
+    NIF_ = NIF
+End Property
+
+Public Property Let NIF_(value As String)
+    NIF = value
+End Property
+
+Public Property Get DbName_() As String
+    DbName_ = DbName
+End Property
+
+Public Property Get CabeceraTicket_() As String
+    CabeceraTicket_ = CabeceraTicket
+End Property
+
+Public Property Let CabeceraTicket_(value As String)
+    CabeceraTicket = value
+End Property
+
+Public Property Get RecEqSN_() As Boolean
+    RecEqSN_ = RecEqSN
+End Property
+
+Public Property Let RecEqSN_(value As Boolean)
+    RecEqSN = value
+End Property
+
+Public Property Get IsLoaded_() As Integer
+    IsLoaded_ = IsLoaded
+End Property
+
+Public Property Let IsLoaded_(value As Integer)
+    IsLoaded = value
+End Property
+
+Public Property Get IdFactura_() As Long
+    IdFactura_ = IdFactura
+End Property
+
+Public Property Let IdFactura_(value As Long)
+    IdFactura = value
+    NumFactura = Nz(DLookup("[Serie] & [NumeroDeFactura]", "tbFacturasCab", "IdFactura = " & IdFactura), "-?-")
+End Property
+
+Public Property Get IdTarifa_() As Long
+    IdTarifa_ = IdTarifa
+End Property
+
+Public Property Let IdTarifa_(value As Long)
+    IdTarifa = value
+    Tarifa = Nz(DLookup("TipoTarifa", "tbTipTrf", "IdTrf = " & IdTarifa), "¿?")
+    If glintIvaInc = 3 Then IVAincSN = Nz(DLookup("IvaIncluidoSN", "tbTipTrf", "IdTrf = " & IdTarifa), True)
+End Property
+
+Public Property Get Impreso_() As Boolean
+    Impreso_ = Impreso
+End Property
+
+Public Property Let Impreso_(value As Boolean)
+    Impreso = value
+End Property
+
+Public Property Get IVAincSN_() As Boolean
+    IVAincSN_ = IVAincSN
+End Property
+
+Public Property Let IVAincSN_(value As Boolean)
+    IVAincSN = value
+End Property
+
+Public Property Get CodTipTick_() As Long
+    CodTipTick_ = CodTipTick
+End Property
+
+Public Property Let CodTipTick_(value As Long)
+    CodTipTick = value
+    TipoTique = Nz(DLookup("TipoTicket", "tbTipTick", "CodTipTick = " & CodTipTick), "¿?")
+    ComandaPorImpresoraS = Nz(DameValorParam("ComandaNum_PorImpresora_CodTipTick_SN_" & value), False)
+End Property
+
+Public Property Get ComandaPorImpresoraS_() As Boolean
+    ComandaPorImpresoraS_ = ComandaPorImpresoraS
+End Property
+
+Public Property Get IdBarm_() As Long
+    IdBarm_ = IdBarm
+End Property
+
+Public Property Let IdBarm_(value As Long)
+    IdBarm = value
+    Atiende = Nz(DLookup("Barman", "tbBarm", "IdBarm = " & IdBarm), "")
+End Property
+
+Public Property Get IdLugar_() As Long
+    IdLugar_ = IdLugar
+End Property
+
+Public Property Let IdLugar_(value As Long)
+    IdLugar = value
+    Mesa = Nz(DLookup("Lugar", "tbEspa_Lugares", "IdLugar = " & IdLugar), "-")
+    If Mesa <> "-" Then
+        Dim lngTipoR As Long
+        lngTipoR = Nz(DameValorParam("TiquesTipoRestaurante"), -1)
+        If lngTipoR <> -1 Then
+            If lngTipoR <> CodTipTick Then CodTipTick_ = lngTipoR
+        'Dim intR As Integer
+        'If gstrSerieMesas = "" Then gstrSerieMesas = Nz(DameValorParam("TicketsSerieMesas"), "\")
+        'If gstrSerieMesas <> "\" Then
+        '    If Nz(DameValorParam("TiquesCambioSerieSinPreguntarSN"), False) = False Then
+        '        If Serie <> "" And Serie <> gstrSerieMesas Then
+        '            intR = mbox("¿Modificar Serie a Serie de Mesas, " & gstrSerieMesas & "?", vbYesNo + vbQuestion + vbDefaultButton1)
+        '            If intR = vbNo Then GoTo Finish
+        '        End If
+        '    End If
+        '    'Serie_ = gstrSerieMesas
+        '    CambiaSerie gstrSerieMesas
+        End If
+    End If
+    Dim lngCodTipTick As Long
+    lngCodTipTick = Nz(DLookup("CodTipTick", "tbEspa_Lugares", "IdLugar = " & IdLugar), -1)
+    If lngCodTipTick <> -1 Then
+        CodTipTick = lngCodTipTick
+        TipoTique = Nz(DLookup("TipoTicket", "tbTipTick", "CodTipTick = " & CodTipTick), "¿?")
+    End If
+    Me.IdComedor_ = Nz(DLookup("IdEspScr", "tbEspScr_Lug", "IdLugar = " & IdLugar), 0)
+    
+    
+FinisH:
+End Property
+
+Public Property Get Barman_() As String
+    Barman_ = Atiende
+End Property
+
+Public Property Get Comensales_() As Integer
+    Comensales_ = Comensales
+End Property
+
+Public Property Let Comensales_(value As Integer)
+    Comensales = value
+End Property
+
+Public Property Get Hecho_() As Boolean
+    Hecho_ = Hecho
+End Property
+
+Public Property Let Hecho_(value As Boolean)
+    Hecho = value
+End Property
+
+Public Property Get CodEstadoT_() As Integer
+    CodEstadoT_ = CodEstadoT
+End Property
+
+Public Property Let CodEstadoT_(value As Integer)
+    CodEstadoT = value
+    EstadoTique = Nz(DLookup("EstadoTique", "tbEstadosTique", "CodEstado = " & CodEstadoT), "")
+    ColorET = Nz(DLookup("Color", "tbEstadosTique", "CodEstado = " & CodEstadoT), 0)
+End Property
+
+Public Property Get EstadoTique_() As String
+    EstadoTique_ = EstadoTique
+End Property
+
+Public Property Get ColorET_() As Long
+    ColorET_ = ColorET
+End Property
+
+Public Property Get IsCurrentDb_() As Boolean
+    IsCurrentDb_ = IsCurrentDb
+End Property
+
+'Public Property Let IsCurrentDb_(value As Boolean)
+'    IsCurrentDb = value
+'End Property
+
+Public Property Get FechaTiq_() As Date
+    FechaTiq_ = FechaTiq
+End Property
+
+Public Property Let FechaTiq_(value As Date)
+    FechaTiq = value
+End Property
+
+Public Property Get FechaIni_() As Date
+    FechaIni_ = FechaIni
+End Property
+
+Public Property Let FechaIni_(value As Date)
+    FechaIni = value
+End Property
+
+Public Property Get FechaFin_() As Date
+    FechaFin_ = FechaFin
+End Property
+
+Public Property Let FechaFin_(value As Date)
+    FechaFin = value
+End Property
+
+Public Property Get TotalTique_() As Currency
+    TotalTique_ = TotalTique
+End Property
+
+Public Property Get TotalPagado_() As Currency
+    TotalPagado_ = TotalPagado
+End Property
+
+Public Property Get NumLinDetalle() As Integer
+    NumLinDetalle = UBound(Detalle)
+End Property
+
+Public Property Get Mesa_() As String
+    Mesa_ = Mesa
+End Property
+
+Public Property Get IVA_(i As Integer) As Currency
+    IVA_ = Detalle(i).IVA
+End Property
+
+Public Property Get RecEq_(i As Integer) As Currency
+    RecEq_ = Detalle(i).RecEq
+End Property
+
+Public Property Get PendienteEnviarComanda_() As Boolean
+    PendienteEnviarComanda_ = PendienteEnviarComanda
+End Property
+
+Public Property Get Crono_() As Integer
+    Crono_ = Crono
+End Property
+
+Public Property Let Crono_(value As Integer)
+    Crono = value
+End Property
+
+Public Property Get UltimaComandaNum_() As Long
+    UltimaComandaNum_ = UltimaComandaNum
+End Property
+
+Public Property Let UltimaComandaNum_(value As Long)
+    UltimaComandaNum = value
+End Property
+
+Public Property Get IdComedor_() As Long
+    IdComedor_ = IdComedor
+End Property
+
+Public Property Let IdComedor_(value As Long)
+    IdComedor = value
+End Property
+
+Public Sub LoadIdTickCab(lngIdTickCab As Long, Optional strMDB As String = "", Optional intIsCli As Integer = False)
+    On Error GoTo Error_LoadIdTickCab
+    Dim rs As Recordset, strSQL As String, i As Integer
+    UltimaComandaNum = 0
+    If Not intIsCli Then
+        strSQL = "SELECT * FROM tbTickCab WHERE IdTickCab = " & lngIdTickCab
+    Else
+        strSQL = "SELECT * FROM tbcli_TickCab WHERE IdTickCab = " & lngIdTickCab
+    End If
+    If strMDB = "" Then
+        Set gdb = CurrentDb
+    Else
+        Set gdb = OpenDatabase(strMDB)
+    End If
+    DbName = gdb.Name
+    IsCurrentDb = DbName = CurrentDb.Name
+    Set rs = gdb.OpenRecordset(strSQL, dbOpenSnapshot)
+    gintDetalleSelect = 0
+    If Not rs.EOF Then
+        IdTickCab = lngIdTickCab
+        IdPuesto = rs("IdPuesto")
+        Serie = rs("Serie")
+        NumTique = rs("NumTicket")
+        FechaTiq = rs("Fecha")
+        FechaIni = rs("Hora")
+        FechaFin = Nz(rs("HoraHecho"), FechaFin)
+        IVAincSN = rs("IvaInc_Det")
+        IdTarifa = rs("IdTrf")
+            Tarifa = Nz(DLookup("TipoTarifa", "tbTipTrf", "IdTrf = " & rs("IdTrf")), "")
+            If glintIvaInc_Precios = 0 Then glintIvaInc_Precios = Nz(DameValorParam("ArticulosPreciosIVAIncluidoSNTS"), 0)
+            Select Case glintIvaInc_Precios
+                Case 1
+                    gintIvaInc_Pre = True
+                Case 2
+                    gintIvaInc_Pre = False
+                Case 3
+                    gintIvaInc_Pre = 3 'Nz(DLookup("IvaIncluidoSN", "tbTipTrf", "IdTrf = " & IdTarifa), True)
+                Case Else
+                    gintIvaInc_Pre = 4
+            End Select
+        
+        Me.CodTipTick_ = rs("CodTipTick")
+            'TipoTique = Nz(DLookup("TipoTicket", "tbTipTick", "CodTipTick = " & rs("CodTipTick")), "")
+        Me.IdBarm_ = rs("IdBarm")
+            'Atiende = Nz(DLookup("Barman", "tbBarm", "IdBarm = " & rs("IdBarm")), "")
+        Me.IdLugar_ = rs("IdLugar")
+            'Mesa = Nz(DLookup("Lugar", "tbEspa_Lugares", "IdLugar = " & rs("IdLugar")), "")
+        TotalBase = rs("TotalBase")
+        IVA_Cab = rs("IVA_Cab")
+        TotalIVA = Nz(rs("TotalIVA"), 0)
+        RE_Cab = rs("RE_Cab")
+        TotalRE = Nz(rs("TotalRE"), 0)
+        TotalTique = rs("TotalTicket")
+        'DesglIVA = DesgloseIVATic (
+        Comensales = rs("Adultos") + rs("Niños")
+        Impreso = rs("Impreso")
+        Me.IdFactura_ = rs("IdFactura")
+            'NumFactura = Nz(DLookup("[Serie] & [NumeroDeFactura]", "tbFacturasCab", "IdFactura = " & IdFactura), "-?-")
+        Hecho = rs("Hecho")
+        Me.CodEstadoT_ = Nz(rs("CodEstadoT"), 0)
+    Else
+        IdTickCab = 0
+        IsLoaded = False
+        GoTo Salir_LoadIdTickCab
+    End If
+    If Not intIsCli Then
+        strSQL = "SELECT * FROM tbTickCab_Cli WHERE IdTickCab = " & lngIdTickCab
+    Else
+        strSQL = "SELECT * FROM tbcli_TickCab_Cli WHERE IdTickCab = " & lngIdTickCab
+    End If
+    Set rs = gdb.OpenRecordset(strSQL, dbOpenSnapshot)
+    If Not rs.EOF Then
+        Me.IdCliente_ = rs("IdCliente")
+        NIF = Nz(rs("NIF"), "")
+        CabeceraTicket = Nz(rs("CabeceraTicket"), "")
+        RecEqSN = Nz(rs("RecEqSN"), False)
+    Else
+        Me.IdCliente_ = 0
+        NIF = ""
+        CabeceraTicket = ""
+        RecEqSN = False
+    End If
+    ReDim Detalle(0)
+    
+    If Not intIsCli Then
+        strSQL = "SELECT tbTickDet.*, tbTickDet_Notas.Nota, tbTickDet_Notas.Suplemento, tbTickDet_Notas.Posiciones"
+        strSQL = strSQL & " FROM tbTickDet LEFT JOIN tbTickDet_Notas ON tbTickDet.IdTickDet = tbTickDet_Notas.IdTickDet"
+        strSQL = strSQL & " WHERE IdTickCab = " & lngIdTickCab
+        strSQL = strSQL & " ORDER BY tbTickDet.Orden;"
+    Else
+        strSQL = "SELECT tbcli_TickDet.*, '' as Nota, 0 as Suplemento, '' as Posiciones"
+        strSQL = strSQL & " FROM tbcli_TickDet"
+        strSQL = strSQL & " WHERE IdTickCab = " & lngIdTickCab
+        strSQL = strSQL & " ORDER BY tbcli_TickDet.Orden;"
+    End If
+    Set rs = gdb.OpenRecordset(strSQL, dbOpenSnapshot)
+    TotalCantidad = 0
+    PendienteEnviarComanda = False
+    While Not rs.EOF
+        i = i + 1
+        ReDim Preserve Detalle(i)
+        Detalle(i).IdTickDet = rs("IdTickDet")
+'        Detalle(i).IdTickCab = rs("IdTickCab")
+        Detalle(i).Orden = rs("Orden")
+        Detalle(i).IdArtV = Nz(rs("IdArtV"), 0)
+        Detalle(i).Cantidad = rs("Cantidad")
+        TotalCantidad = TotalCantidad + rs("Cantidad")
+        Detalle(i).Concepto = rs("Concepto")
+        Detalle(i).Precio = rs("Precio")
+        Detalle(i).IVA = rs("IVA")
+        Detalle(i).RecEq = rs("RecEq")
+        Detalle(i).Comanda = Nz(rs("Comanda"), "")
+        Detalle(i).DtoSN = rs("DtoSN")
+        Detalle(i).EnviarComanda = rs("EnviarComanda")
+        Detalle(i).EnComanda = Nz(rs("EnComanda"), 0)
+        Detalle(i).InvitacionSN = rs("InvitacionSN")
+        Detalle(i).IdDestino = Nz(rs("IdDestino"), 0)
+        Detalle(i).Nota = Nz(rs("Nota"), "")
+        Detalle(i).Suplemento = Nz(rs("Suplemento"), 0)
+        Detalle(i).Posiciones = Nz(rs("Posiciones"), "")
+        Detalle(i).PesoSN = EsArtV_Balanza(Detalle(i).IdArtV)
+        'Detalle(i).RowSource = rs("IdTickDet") & ";" & """" & IIf(Detalle(i).InvitacionSN, "*", "") & IIf(Detalle(i).Cantidad = 0, "", Detalle(i).Cantidad & " ") & Detalle(i).Concepto & """;""" & LlenaIzq(IIf(Detalle(i).Cantidad * Detalle(i).Precio = 0, "-", Format(Detalle(i).Cantidad * Detalle(i).Precio, "Fixed")), 8) & IIf(Detalle(i).Suplemento <> 0, "+", "") & """;"
+        PonDetalleRS i
+'        mbox Detalle(i).RowSource
+        PendienteEnviarComanda = PendienteEnviarComanda Or (Detalle(i).IdDestino > 0 And Detalle(i).EnComanda = 0)
+        rs.MoveNext
+    Wend
+    ReDim Pagos(0)
+    i = 0
+    If Not intIsCli Then
+        strSQL = "SELECT * FROM tbCajaDet WHERE Origen = 'T' AND IdFrom = " & lngIdTickCab
+    Else
+        strSQL = "SELECT * FROM tbcli_CajaDet WHERE Origen = 'T' AND IdFrom = " & lngIdTickCab
+    End If
+    Set rs = gdb.OpenRecordset(strSQL, dbOpenSnapshot)
+    TotalPagado = 0
+    While Not rs.EOF
+        i = i + 1
+        ReDim Preserve Pagos(i)
+        Pagos(i).IdCajaDet = rs("IdCajaDet")
+        Pagos(i).IdCajaCab = rs("IdCajaCab")
+        Pagos(i).Cantidad = rs("Cantidad")
+        Pagos(i).CodFPago = rs("CodFPago")
+            Pagos(i).FormaPago = Nz(DLookup("Descripcion", "tbFPago", "CodFPago = '" & rs("CodFPago") & "'"), "")
+        Pagos(i).Entrega = rs("Entrega")
+        Pagos(i).Devolucion = rs("Devolucion")
+        TotalPagado = TotalPagado + Pagos(i).Cantidad
+        rs.MoveNext
+    Wend
+    IsCli = intIsCli
+    UltimaComandaNum = Nz(DMax("NumComanda", "tbComandas", "IdTickCab = " & Me.IdTickCab_), 0)
+    IsLoaded = True
+    If gintTPVsegundosCronometro = 0 Then
+        gintTPVsegundosCronometro = Nz(DameValorParam("TPVsegundosCronometro"), -1)
+        If gintTPVsegundosCronometro = 0 Then gintTPVsegundosCronometro = -1
+    End If
+Salir_LoadIdTickCab:
+    Exit Sub
+Error_LoadIdTickCab:
+    Select Case Err
+        Case Else
+            MBox "Error nº " & Err & " en LoadIdTickCab" & vbCrLf & Err.Description
+            Resume Salir_LoadIdTickCab
+    End Select
+End Sub
+
+Public Sub CargaTiqueTPV(Optional lngIdTickDet As Long = 0, Optional intDisplayCero As Integer = False, Optional intVerCeros As Integer = True)
+    On Error GoTo Error_CargaTiqueTPV
+    Dim frm As Form, i As Integer, strRow As String
+    If Not IsOpenForm("frmTPV") Then DoCmd.OpenForm "frmTPV"
+    Set frm = Forms("frmTPV")
+    If Not IsLoaded Then
+        frm.lblNumTicket.Caption = "---"
+        frm.lblPuesto.Caption = "---"
+        frm.lblBarman.Caption = "---"
+        frm.lblFecha.Caption = "---"
+        frm.lblLugar.Caption = "---"
+        frm.lblFactura.Caption = "---"
+        frm.lblComen.Caption = "---"
+        frm.lblTotCan.Caption = "-"
+        frm.lblTipTic.Caption = "---"
+        frm.lblTarifa.Caption = "---"
+        frm.lblTarifa.BackColor = vbWhite
+        frm.lblEstTiq.Caption = "---"
+        frm.lblEstTiq.BackColor = vbWhite
+        frm.lblNumTicket.Tag = ""
+        frm.lblCabTick.Visible = False
+        frm.lstDetalle.Visible = False
+        frm.altVerPagos = False
+        Call frm.altVerPagos_AfterUpdate
+        If intDisplayCero Then frm.lblDisplay.Caption = "0,00"
+        If frm.lblDisplay.Caption = "0,00" Then
+            If gstrPuertoVisor <> "-" Then DisplayaYa SaludoVisor, "-"
+        Else
+            If gstrPuertoVisor <> "-" Then DisplayaYa "Total:" & LlenaIzqChar(frm.lblDisplay.Caption, (giMaxSizeVisor / 2) - 6, "."), Centra("Mila esker - Gracias", giMaxSizeVisor / 2)
+        End If
+        IdTickCab = 0
+        UltimaComandaNum = 0
+        frm.glngIdTickCab = 0
+        If glintPedirMesa Then
+            Call frm.btnSelectLugar_Click
+        End If
+        'If frm.subfrmPanel.SourceObject <> "frmPanel" Then frm.subfrmPanel.SourceObject = "frmPanel"
+        frm.btnNext.Enabled = True
+        frm.btnPrevious.Enabled = True
+        Exit Sub
+    End If
+    frm.lblNumTicket.Caption = Serie & IIf(Len(Serie) > 0, "-", "") & NumTique
+    frm.lblPuesto.Caption = Nz(DLookup("NombrePuesto", "cfgPuestos", "IdPuesto = " & IdPuesto), "¿Puesto?")
+    frm.lblCabTick.Caption = CabeceraTicket
+    If frm.lblCabTick.Caption = "" Then
+        frm.lstDetalle.top = frm.lblCabTick.top
+        frm.lblCabTick.Visible = False
+    Else
+        frm.lstDetalle.top = frm.lblCabTick.top + frm.lblCabTick.Height
+        frm.lblCabTick.Visible = True
+    End If
+    strRow = """IdCajaDet"";""  Forma Pago"";""    Cantidad"";"
+    For i = 1 To UBound(Pagos)
+        strRow = strRow & Pagos(i).IdCajaDet & ";""" & Pagos(i).FormaPago & """;""" & LlenaIzq(Format(Pagos(i).Cantidad, "#,##0.00"), 13) & """;"  ' & IdTickCab & ";"
+    Next i
+    frm.lstPagos.RowSource = strRow
+    frm.altVerPagos = UBound(Pagos) > 0
+    Call frm.altVerPagos_AfterUpdate
+    frm.lblBarman.Caption = "Barm: " & Atiende
+    frm.lblBarman.BackColor = Nz(DLookup("ColorTickets", "tbBarm", "IdBarm = " & IdBarm), 16777215)
+    frm.lblBarman.ForeColor = Nz(DLookup("ForeColor", "sysColores", "Lng_Color = " & frm.lblBarman.BackColor), 0)
+    frm.lblLugar.Caption = "MESA: " & Mesa
+    frm.lblTipTic.Caption = "Tip: " & TipoTique
+    frm.lblTipTic.BackColor = Nz(DLookup("ColorTipo", "tbTipTick", "CodTipTick = " & CodTipTick), 16777215)
+    frm.lblTipTic.ForeColor = Nz(DLookup("ForeColor", "sysColores", "Lng_Color = " & frm.lblTipTic.BackColor), 0)
+    
+    Select Case IdFactura
+        Case -1
+            frm.lblFactura.Caption = "Fac Pen."
+        Case 0
+            frm.lblFactura.Caption = "Fac:-"
+        Case Else
+            frm.lblFactura.Caption = NumFactura
+    End Select
+    frm.lblFecha.Caption = IIf(FechaFin <> 0, Format(FechaFin, "dd/mm/yy hh:nn"), Format(FechaIni, "dd/mm/yy hh:nn"))
+    frm.lblTarifa.Caption = "Trf: " & Tarifa
+    frm.lblTarifa.BackColor = Nz(DLookup("ColorTarifa", "tbTipTrf", "IdTrf = " & IdTarifa), 16777215)
+    frm.lblTarifa.ForeColor = Nz(DLookup("ForeColor", "sysColores", "Lng_Color = " & frm.lblTarifa.BackColor), 0)
+    frm.lblEstTiq.Caption = "ET: " & EstadoTique
+    frm.lblEstTiq.BackColor = ColorET_
+    frm.lblEstTiq.ForeColor = Nz(DLookup("ForeColor", "sysColores", "Lng_Color = " & frm.lblEstTiq.BackColor), 0)
+    frm.lblComen.Caption = "Com.: " & Comensales
+    frm.lblNumTicket.Tag = IdTickCab
+    strRow = ""
+    'PendienteEnviarComanda = False
+    'Ver Ceros....
+    If intVerCeros Then
+        For i = 1 To UBound(Detalle)
+            'If Not Detalle(i).Borrar Then
+            strRow = strRow & Detalle(i).RowSource
+            'PendienteEnviarComanda = PendienteEnviarComanda Or (Detalle(i).EnviarComanda And Detalle(i).EnComanda = 0)
+        Next i
+    Else
+        For i = 1 To UBound(Detalle)
+            If Cantidad_(i) * Precio_(i) <> 0 Then strRow = strRow & Detalle(i).RowSource
+            'PendienteEnviarComanda = PendienteEnviarComanda Or (Detalle(i).EnviarComanda And Detalle(i).EnComanda = 0)
+        Next i
+    End If
+    If frm.btnVerCeros.Visible Then
+        frm.btnVerCeros.Tag = IIf(intVerCeros, "S", "N")
+        frm.btnVerCeros.Caption = "0s---" & IIf(intVerCeros, "S/n", "s/N")
+    End If
+    frm.lstDetalle.BackColor = IIf(Impreso, C_Rojo, IIf(PendienteEnviarComanda, C_Amarillo, vbWhite))
+    frm.lstDetalle.RowSource = strRow
+    frm.lstDetalle.Visible = True
+    frm.lblDisplay.Caption = Format(TotalTique, "#,##0.00")
+    'frm.lblDisplay.FontItalic = Impreso
+    frm.lstDetalle.FontItalic = frm.lblDisplay.FontItalic
+    frm.lblTotCan.Caption = TotalCantidad
+    If lngIdTickDet <> 0 Then
+        frm.lstDetalle = lngIdTickDet
+        gintDetalleSelect = frm.lstDetalle.ListIndex + 1
+    Else
+        'frm.lstDetalle = Detalle(gintDetalleSelect).IdTickDet
+        frm.lstDetalle = frm.lstDetalle.Column(0, gintDetalleSelect - 1)
+    End If
+    frm.btnIVAsn.Caption = "IVA " & IIf(IVAincSN, "S/n", "s/N") & " inc."
+    frm.glngIdTickCab = IdTickCab
+    frm.Carga_lstNotas
+    If Hecho = True Then
+        frm.btnBorrarLin.Enabled = False
+        frm.btnCantidad.Enabled = False
+        frm.btnConcepto.Enabled = False
+        frm.btnPrecio.Enabled = False
+        frm.btnTarjeta.Enabled = False
+        'frm.btnCerrarTicket.Enabled = False
+        frm.btnCli.Enabled = False
+        frm.lblDisplay.ForeColor = 12632256
+        frm.lblCabTick.BackColor = 12632256
+        'frm.lblCabTick2.BackColor = 0
+        frm.lstDetalle.Enabled = False
+        frm.lstPagos.Enabled = False
+        frm.lblTotCan.BackColor = 12632256
+        frm.lstNotas.Enabled = False
+        'frm.lblCabTick.BackColor = 12632256
+    Else
+        'frm.subfrmPanel.Enabled = True
+        frm.btnBorrarLin.Enabled = True
+        frm.btnCantidad.Enabled = True
+        frm.btnConcepto.Enabled = True
+        frm.btnPrecio.Enabled = True
+        'frm.btnCerrarTicket.Enabled = True
+        frm.btnCli.Enabled = True
+        frm.btnCambios.Enabled = True
+        frm.btnCobro.Enabled = True
+        frm.btnMetalico.Enabled = True
+        frm.btnTarjeta.Enabled = True
+        frm.lblDisplay.ForeColor = 65535
+        frm.lblCabTick.BackColor = 13434828
+        'frm.lblCabTick2.BackColor = 13056
+        frm.lstDetalle.Enabled = True
+        frm.lstPagos.Enabled = True
+        frm.lblTotCan.BackColor = 10092543
+        frm.lstNotas.Enabled = True
+        'frm.lblCabTick.BackColor = 13434828
+
+    End If
+    frm.btnNext.Enabled = IsCurrentDb
+    frm.btnPrevious.Enabled = IsCurrentDb
+    Crono = gintTPVsegundosCronometro
+Salir_CargaTiqueTPV:
+    Exit Sub
+Error_CargaTiqueTPV:
+    Select Case Err
+        Case Else
+            MBox "Error nº " & Err & " en CargaTiqueTPV" & vbCrLf & Err.Description
+            Resume Salir_CargaTiqueTPV
+    End Select
+End Sub
+
+Public Sub DescargaTiqueTPV(Optional intDisplayCero As Integer = False)
+    On Error GoTo Error_DescargaTiqueTPV
+    IsLoaded = False
+    CargaTiqueTPV , intDisplayCero
+Salir_DescargaTiqueTPV:
+    Exit Sub
+Error_DescargaTiqueTPV:
+    Select Case Err
+        Case Else
+            MBox "Error nº " & Err & " en DescargaTiqueTPV" & vbCrLf & Err.Description
+            Resume Salir_DescargaTiqueTPV
+    End Select
+End Sub
+
+Public Sub NuevoTique(Optional lngIdLugar As Long = 0, _
+                    Optional lngOtroCodTipTick As Long = 0, _
+                    Optional lngIdBarm As Long = 0, _
+                    Optional lngIdTrf As Long = 0, _
+                    Optional lngIdPuesto As Long = 0, _
+                    Optional strSerie As String = "?", _
+                    Optional dtFecha As Date = 0, _
+                    Optional intCargaTPV As Integer = True, _
+                    Optional lngIdCliente As Long = 0)
+    Dim v As Variant ', intAdultos As Integer, intNiños As Integer, strSQL As String
+    Dim strNP As String, vVP As Variant, lngIdTickCab As Long
+    Dim strNIF As String
+    On Error GoTo Error_NuevoTique
+    InicializaTique
+    IdTickCab = -1
+    'If Nz(DameValorParam("CallCargaPanel"), True) = True Then Call Carga_Panel(0, Me("subfrmPanel").Form, True)
+    If glintTiquesInicializados = False Then
+        gllngIdBarm = Nz(DLookup("IdBarm", "tbBarm", "Predeterminado = True"), 0)
+        gllngIdTrf = DameValorParam("PuestoTarifaPredeterminada")
+        glintTarifasXHoras = Nz(DameValorParam("TicketsTarifasSegunHorasSN"), False)
+        glstrSerie = Nz(DameValorParam("PuestoSerie"), "")
+        glintPedirBarman = Nz(DameValorParam("PuestoTicketsAlAbrirBarm"), False)
+        glintPedirBarmanXAcceso = Nz(DameValorParam("PuestoTicketsPedirBarmanXAccesoSN"), False)
+        glintPedirMesa = Nz(DameValorParam("PuestoTicketsAlAbrirPedirMesa"), False)
+        'glintPedirComensales = Nz(DameValorParam("PuestoPedirComensales"), False)
+        glintPedirComensales = Nz(DameValorParam("TicketsPedirComensalesSNM"), 2)
+        
+        If IsNull(DLookup("IdTrf", "tbTipTrf", "IdTrf = " & gllngIdTrf)) Then
+            MBox ("Se debe indicar tarifa predeterminada del puesto")
+            Exit Sub
+        End If
+        glintIvaInc = Nz(DameValorParam("TicketsDetalleIVAIncluidoSNT"), 5)
+        If glintIvaInc = 5 Then
+            glintIvaInc = DameValorParam("TicketsIvaIncluido")
+        End If
+        'If glintIvaInc = 3 Then
+        '    glintIvaInc = Nz(DLookup("IvaIncluidoSN", "tbTipTrf", "IdTrf = " & gllngIdTrf), True)
+        'End If
+        
+        gllngCodTipTick = Nz(DLookup("CodTipTick", "tbTipTick", "Predet = True"), 0)
+        gllngIdPuesto = Nz(DLookup("IdPuesto", "cfgPuestos", "NombrePuesto= " & ConComillas(Nz(DameValorParam("PuestoNombre"), ""))), 0)
+        'gstrPuesto = Nz(DLookup("NombrePuesto", "cfgPuestos", "IdPuesto = " & glngIdPuesto), "¿Puesto?")
+        glintImprimirTiquesSiempre = Nz(DameValorParam("PuestoTicketsImprimirSiempre"), False)
+        glstrTicketsHoraCambioDia = Nz(DameValorParam("TicketsHoraCambioDia"), "04:00")
+        If glintIvaInc_Precios = 0 Then glintIvaInc_Precios = Nz(DameValorParam("ArticulosPreciosIVAIncluidoSNTS"), 0)
+        Select Case glintIvaInc_Precios
+            Case 1
+                gintIvaInc_Pre = True
+            Case 2
+                gintIvaInc_Pre = False
+            Case 3
+                gintIvaInc_Pre = 3 'Nz(DLookup("IvaIncluidoSN", "tbTipTrf", "IdTrf = " & IdTarifa), True)
+            Case Else
+                gintIvaInc_Pre = 4
+        End Select
+        
+    End If
+    If glintPedirMesa = True And lngIdLugar = 0 Then
+        lngIdLugar = DimeIdLugar()
+        'If lngIdLugar = 0 Then Exit Sub
+    End If
+    
+    Dim dtN As Date ', rsCb As Recordset
+    'Set rsCb = CurrentDb.OpenRecordset("tbTickCab", dbOpenDynaset, dbAppendOnly)
+    'rsCb.AddNew
+    ReDim Detalle(0)
+    ReDim Pagos(0)
+    dtN = IIf(dtFecha = 0, Now(), dtFecha)
+    FechaTiq = IIf(dtFecha = 0, Date, CDate(Int(dtFecha)))
+    FechaIni = dtN
+    If Format(FechaIni, "hh:nn") <= glstrTicketsHoraCambioDia Then
+        FechaTiq = FechaTiq - 1
+    End If
+    Serie = IIf(strSerie = "?", glstrSerie, strSerie)
+    CodTipTick = IIf(lngOtroCodTipTick = 0, gllngCodTipTick, lngOtroCodTipTick)
+    IdPuesto = IIf(lngIdPuesto = 0, gllngIdPuesto, lngIdPuesto)
+    NumTique = -1
+    If lngIdLugar <> 0 Then
+        IdLugar = lngIdLugar
+        IdTarifa = Nz(DLookup("IdTrf", "tbEspa_Lugares", "IdLugar = " & lngIdLugar), gllngIdTrf)
+    Else
+        'rsCb("IdLugar") = 0
+        IdTarifa = IIf(lngIdTrf = 0, gllngIdTrf, lngIdTrf)
+    End If
+    If glintTarifasXHoras = True Then
+        IdTarifa = DimeTarifaHora(Now)
+    Else
+    If glintIvaInc = 3 Then
+        IVAincSN = Nz(DLookup("IvaIncluidoSN", "tbTipTrf", "IdTrf = " & IdTarifa), True)
+    Else
+        IVAincSN = glintIvaInc = 1
+    End If
+        
+        'rsCb("IdTrf") = gllngIdTrf
+    End If
+    gllngIdBarm = lngIdBarm
+    If gllngIdBarm = 0 And Nz(DCount("IdBarm", "tbBarm", "Activo = True AND TPV_SN = True"), 0) = 1 Then
+        gllngIdBarm = Nz(DLookup("IdBarm", "tbBarm", "Activo = True"), 0)
+    End If
+    If glintPedirBarman = True And gllngIdBarm = 0 Then
+IniBoxBarm:
+        If glintPedirBarmanXAcceso = True Then
+            If PermitirAcceso("US", "USER", True, "Nuevo tique", True, gllngIdBarm) = False Then Exit Sub
+            'mbox gllngIdBarm
+        Else
+            AbreBox "002"
+            If Not IsOpenForm("frm_BotonBox") Then
+                gllngIdBarm = Nz(DLookup("IdBarm", "tbBarm", "Predeterminado = True"), 0)
+                GoTo FinBoxBarm
+            End If
+            v = Forms("frm_BotonBox")("lblResult").Caption
+            DoCmd.Close acForm, "frm_BotonBox"
+            If v = "camar_on-off" Then
+                If gm_Presencia Then
+                    DoCmd.OpenForm "frmRegistroPresencia"
+                    GoTo Salir_NuevoTique
+                End If
+                DoCmd.OpenForm "frmModiBarmActi", , , , , acDialog
+                GoTo IniBoxBarm
+            End If
+            If Not IsNumeric(v) Then
+                gllngIdBarm = Nz(DLookup("IdBarm", "tbBarm", "Predeterminado = True"), 0)
+                GoTo FinBoxBarm
+            End If
+            gllngIdBarm = v
+        End If
+    End If
+FinBoxBarm:
+    IdBarm = gllngIdBarm
+    'vVP = rsCb("NumTicket")
+    If glintPedirComensales = 1 Or (glintPedirComensales = 3 And lngIdLugar <> 0) Then
+        Comensales = Nz(DimeTeclado(2, "Nº de comensales", Comensales), Comensales)
+    End If
+    lngIdTickCab = IdTickCab
+    IsLoaded = True
+    CodTipTick_ = CodTipTick
+    IdBarm_ = IdBarm
+    IdTarifa_ = IdTarifa
+    IdLugar_ = IdLugar
+    gintDetalleSelect = 0
+    If lngIdCliente <> 0 Then
+        Me.IdCliente_ = lngIdCliente
+        Me.CabeceraTicket_ = DimeCabCli(lngIdCliente, strNIF)
+        Me.NIF_ = strNIF
+    End If
+    If intCargaTPV Then CargaTiqueTPV
+Salir_NuevoTique:
+    Exit Sub
+Error_NuevoTique:
+    Select Case Err
+        Case Else
+            MBox "Error nº " & Err & " en NuevoTique" & vbCrLf & Err.Description
+            Resume Salir_NuevoTique
+    End Select
+End Sub
+
+Public Sub SelectDetalle(lngIdTickDet As Long)
+    Dim i As Integer
+    gintDetalleSelect = 0
+    For i = 1 To UBound(Detalle)
+        If Detalle(i).IdTickDet = lngIdTickDet Then
+            gintDetalleSelect = i
+            Exit For
+        End If
+    Next i
+End Sub
+
+Public Sub AñadeDetalle(lngIdArtV As Long, Optional ByRef gcurCant As Currency = 0 _
+                    , Optional intPortBalanza As Integer = 0, Optional frmBalanza As Form _
+                    , Optional strComanda As String = "", Optional intEnviarComanda As Integer _
+                    , Optional intFuncionPrecioNo As Boolean = False, Optional strConcepto As String = "" _
+                    , Optional curIVA As Currency = -1, Optional curPrecioFijo As Currency = -1000.1234 _
+                    , Optional intDtoSN As Integer = False, Optional strNota As String = "¿" _
+                    , Optional curSuplemento As Currency = -0.1234, Optional lngIdDestino As Long = 0 _
+                    , Optional strSilla As String = "" _
+                    , Optional intCargaTPV As Integer = True)
+                    'frmBalanza debe tener un procedimiento público DimeCantidadBalanza
+    On Error GoTo Error_AñadeDetalle
+    Dim intR As Integer, strXML As String, strFuncion As String, curCant As Currency, i As Integer, v As Variant, v2 As Variant
+    Dim lngTipoIVA As Long, j As Integer
+    Dim curPre As Currency
+    Dim intPesoSN As Integer
+    Dim intForzarEstadoT As Integer
+    'comprobar si el tique esta cerrado
+    If Hecho = True Then GoTo Salir_AñadeDetalle
+    If Not IVAsLoaded Then CargaIVAs
+    ' comprobar si el ticket ya se ha impreso antes
+    If Impreso = True Then
+        If Nz(DameValorParam("AccesoAlReimprimirTiques"), False) = True Then
+            Dim sAcc As String
+            sAcc = AccesoEmpleado("Acceso a modificar tique impreso")
+            If sAcc = "" Or sAcc = "0" Then GoTo Salir_AñadeDetalle
+            If InStr(sAcc, "#*") = 0 Then
+                MsgBox "No autorizado/a", vbExclamation
+                GoTo Salir_AñadeDetalle
+            Else
+                intR = vbOK
+            End If
+        ElseIf Nz(DameValorParam("TicketsAvisoYaImpresoSN"), False) = True Then
+            intR = MBox("El Ticket ya se ha impreso anteriormente, ¿Desea, de todas maneras, modificarlo?", vbOKCancel + vbQuestion)
+        Else
+            intR = vbOK
+        End If
+        If intR = vbCancel Then Exit Sub
+        Impreso = False
+    End If
+    lngTipoIVA = Nz(DLookup("TipoIVA", "tbArtV", "IdArtV = " & lngIdArtV), 0)
+    intForzarEstadoT = Nz(DLookup("ForzarEstadoTique", "tbArtV", "IdArtV = " & lngIdArtV), 0)
+    If intForzarEstadoT <> 0 Then Me.CodEstadoT_ = intForzarEstadoT
+    FechaFin = Now()
+    
+    'comprobar si es un artículo con funciónprecio (Descuentos)
+    If intFuncionPrecioNo = True Then
+        If gcurCant = -1.2345 Then gcurCant = 1
+        curCant = gcurCant
+        GoTo AñadirLinea
+    End If
+    strXML = Nz(DLookup("FuncionPrecio", "tbArtV", "IdArtV = " & lngIdArtV), "")
+    If strXML <> "" Then
+        strFuncion = DimeXML(strXML, "F")
+        Select Case strFuncion
+            Case "AplicarDto"
+                AplicarDto lngIdArtV
+            Case "OtroDto"
+                OtroDto lngIdArtV
+            Case "Subtotal"
+                Subtotal lngIdArtV
+            Case "TomaDetalleMenu"
+                TomaDetalleMenu lngIdArtV
+            Case "Toma_Detalle_Menu_Apasos"
+                Toma_Detalle_Menu_Apasos lngIdArtV
+            Case "Toma_Detalle_Menu_Apasos_Posicion"
+                Toma_Detalle_Menu_Apasos_Posicion lngIdArtV
+            Case "TomaDetalleCombinado"
+                TomaDetalleCombinado lngIdArtV
+            Case "TomaDetalleComandero"
+                TomaDetalleComandero lngIdArtV
+            Case "TomaDetalleCom_SinArticulo"
+                TomaDetalleCom_SinArticulo lngIdArtV
+            Case "MediaRacion"
+                MediaRacion lngIdArtV
+            Case "Precio_Porcentaje"
+                Precio_Porcentaje lngIdArtV
+            Case "ModificarTarifa"
+                ModificarTarifa
+            Case "ModificarTarifa1"
+                ModificarTarifa 1
+            Case "ModificarTarifa2"
+                ModificarTarifa 2
+            Case "ArticuloMasNota"
+                Call ArticuloMasNota(lngIdArtV, IIf(gcurCant = 0, 1, gcurCant))
+            Case "PedidoCocina"
+                MBox "No implementado todavía"
+            'Case "EstadoTique"
+            '    CambiaEstadoTiqueIdArtV lngIdArtV
+            '    GoTo AñadirLinea
+            Case Else
+                MBox "No se encuentra FuncionPrecio: " & strFuncion, vbExclamation
+        End Select
+        GoTo Salir_AñadeDetalle
+    End If
+    If glintAlRepetirUltimoSumar = 0 Then
+        glintAlRepetirUltimoSumar = Nz(DameValorParam("PuestoTicketsAlRepetirUltimoSumar"), False)
+        If Not glintAlRepetirUltimoSumar Then glintAlRepetirUltimoSumar = 2
+    End If
+    If gcurCant <> 0 Then
+        If gcurCant = -1.2345 Then gcurCant = 0
+        curCant = gcurCant
+        gcurCant = 0
+        On Error Resume Next
+        Forms("frmTecladoNX")("txtDisplay") = Null
+        On Error GoTo Error_AñadeDetalle
+        GoTo AñadirLinea
+    End If
+    curCant = 1
+    If glintAlRepetirUltimoSumar = 2 Then GoTo AñadirLinea
+    intPesoSN = EsArtV_Balanza(lngIdArtV)
+    If intPesoSN Then GoTo AñadirLinea
+    If curPrecioFijo = -1000.1234 Then
+        curPre = Nz(DLookup("PrecioU", "tbArtV_Trf", "IdTrf = " & IdTarifa & " AND IdArtV = " & lngIdArtV), 0)
+    Else
+        curPre = curPrecioFijo
+    End If
+    If curPre = 0 Then
+        GoTo AñadirLinea
+    End If
+    
+    'Si el último artículo es el mismo (y no es comanda enviada(y no se ha modificado el concepto)) se suma 1 a la cantidad de la línea
+    If gintDetalleSelect <> 0 Then
+        i = gintDetalleSelect
+        If Detalle(i).IdArtV = lngIdArtV And _
+                            InStr("/X", Detalle(i).Comanda) = 0 And _
+                            Detalle(i).Nota = "" And _
+                            Detalle(i).Concepto = Nz(DLookup("TxtTicket", "tbArtV", "IdArtV = " & lngIdArtV), "-") Then
+                Detalle(i).Cantidad = Detalle(i).Cantidad + 1
+                GoTo CargaTique
+        End If
+    End If
+        '.................................................................................................
+AñadirLinea:
+    i = UBound(Detalle) + 1
+    ReDim Preserve Detalle(i)
+    Detalle(i).IdTickDet = -1 * i
+    Detalle(i).IdArtV = lngIdArtV
+    Detalle(i).Orden = i * 2
+    Detalle(i).Cantidad = curCant
+    If intPesoSN And intCargaTPV Then
+        If intPortBalanza > 0 Then
+            Detalle(i).Cantidad = frmBalanza.DimeCantidadBalanza
+            'intLeidaBalanza = True
+        Else
+            Detalle(i).Cantidad = SpNz(DimeTeclado(2, "Teclee peso"), 0)
+        End If
+    End If
+    If strConcepto = "" Then
+        Detalle(i).Concepto = IIf(Detalle(i).IdArtV = -1, "-----------------", Nz(DLookup("TxtTicket", "tbArtV", "IdArtV = " & lngIdArtV), "-"))
+    Else
+        Detalle(i).Concepto = strConcepto
+    End If
+    If Detalle(i).Concepto = "Varios +" Then Detalle(i).Concepto = Nz(DimeTeclado(1, "Teclee concepto", "Varios"), Detalle(i).Concepto)
+    If strComanda = "" Then
+        v = DLookup("IdDestino", "tbCom_Dest_ArtV", "IdArtV = " & lngIdArtV)
+        If IsNull(v) Then
+            Detalle(i).Comanda = " "
+            Detalle(i).EnviarComanda = False
+        Else
+            v2 = Nz(DLookup("IdRedestino", "tbEspScr", "IdEspScr = " & Me.IdComedor_ & " AND IdDestino = " & v), -1)
+            If v2 <> -1 Then v = v2
+            Detalle(i).Comanda = UCase(Nz(DLookup("Letra", "tbCom_Destinos", "IdDestino = " & v), "?"))
+            Detalle(i).EnviarComanda = True
+        End If
+    Else
+        Detalle(i).Comanda = strComanda
+        Select Case strComanda
+            Case "/", "X", "", " "
+            Case Else
+                Detalle(i).EnviarComanda = True
+                Detalle(i).EnComanda = 0
+        End Select
+        'Detalle(i).Cantidad = 0
+    End If
+    If lngIdDestino = 0 Then
+        Detalle(i).IdDestino = Nz(v, 0)
+    Else
+        Detalle(i).IdDestino = lngIdDestino
+    End If
+    If curIVA = -1 Then
+        Detalle(i).IVA = curIVAs(lngTipoIVA)
+        If RecEqSN = True Then Detalle(i).RecEq = curREs(lngTipoIVA)
+    Else
+        Detalle(i).IVA = curIVA
+        For j = 0 To UBound(curIVAs)
+            If curIVAs(j) = curIVA Then
+                lngTipoIVA = j
+                Exit For
+            End If
+        Next j
+        If RecEqSN = True Then
+            If curIVAs(lngTipoIVA) = curIVA Then Detalle(i).RecEq = curREs(lngTipoIVA)
+        End If
+    End If
+    Detalle(i).DtoSN = intDtoSN
+    Detalle(i).PesoSN = intPesoSN
+    If gintDetalleSelect <> 0 Then
+        MueveDetalleA_Linea i, gintDetalleSelect + 1
+        i = gintDetalleSelect
+    End If
+    SelectDetalle Detalle(i).IdTickDet
+    If strNota <> "¿" Then
+        If strNota = "TxtVariasLineas" Then
+            Nota_(i) = Nz(DLookup("TxtVariasLineas", "tbArtV", "IdArtV = " & lngIdArtV), "")
+        Else
+            Nota_(i) = strNota
+        End If
+    End If
+    
+    If curSuplemento <> -0.1234 Then Suplemento_(i) = curSuplemento
+CargaTique:
+    'PonPrecioDetalle i
+    'PonTotalesTique
+    PendienteEnviarComanda = PendienteEnviarComanda Or (Detalle(i).EnviarComanda And Detalle(i).EnComanda = 0)
+    'If curPre = 0 Then curPrecioFijo = Nz(DimeTeclado(2, "Introduzca precio del artículo", 0), 0)
+    PonPrecioDetalle i, curPrecioFijo
+    PonTotalesTique
+    If gstrPuertoVisor <> "-" Then
+        Dim sL1 As String, sL2 As String
+        sL1 = "Total:" & LlenaIzqChar(Format(Me.TotalTique_, "##0.00"), (giMaxSizeVisor / 2) - 6, ".", True)
+        sL2 = Llena(Detalle(i).Cantidad & " " & Detalle(i).Concepto & LlenaChar(".", giMaxSizeVisor), (giMaxSizeVisor / 2) - 7) & LlenaIzqChar(Format(Detalle(i).Cantidad * Detalle(i).Precio, "#0.00"), 7, ".")
+        DisplayaYa sL1, sL2
+    End If
+    If strSilla <> "" Then PonDetalleSQ i, strSilla, Detalle(i).Cantidad
+    If intCargaTPV Then CargaTiqueTPV Detalle(i).IdTickDet
+Salir_AñadeDetalle:
+    Exit Sub
+Error_AñadeDetalle:
+    Select Case Err
+        Case Else
+            MBox "error nº " & Err & " en AñadeDetalle" & vbCrLf & Err.Description
+            Resume Salir_AñadeDetalle
+    End Select
+End Sub
+
+Public Sub PonPrecioDetalle(Optional ii As Integer = -1, Optional curPrecioFijo As Currency = -1000.1234) ', lngId As Long, Optional db As Database = Nothing)
+    'ii=-1 pone precio al último detalle
+    'ii=0 pone precio a todos los detalles
+    On Error GoTo Error_PonPrecioDetalle
+    Dim intIvaInc_Pre As Integer, i As Integer, j As Integer, k As Integer
+    Dim curPre As Currency
+    FechaFin = Now()
+    If ii = 0 Then
+        j = 1
+        k = UBound(Detalle)
+    ElseIf ii = -1 Then
+        j = UBound(Detalle)
+        k = UBound(Detalle)
+    Else
+        j = ii
+        k = ii
+    End If
+    For i = j To k
+        If curPrecioFijo = -1000.1234 Then
+            curPre = Nz(DLookup("PrecioU", "tbArtV_Trf", "IdTrf = " & IdTarifa & " AND IdArtV = " & Detalle(i).IdArtV), 0)
+        Else
+            curPre = curPrecioFijo
+        End If
+        If Detalle(i).InvitacionSN = True Then
+            curPre = 0
+            GoTo Grabar
+        End If
+        If gintIvaInc_Pre = 3 Then
+            intIvaInc_Pre = Nz(DLookup("IvaIncluidoSN", "tbTipTrf", "IdTrf = " & IdTarifa), True)
+        ElseIf gintIvaInc_Pre = 4 Then
+            intIvaInc_Pre = Nz(DLookup("PreciosIvaIncluidoSN", "qryArtV_IvaIncSN", "IdArtV = " & Detalle(i).IdArtV), True)
+        Else
+            intIvaInc_Pre = gintIvaInc_Pre
+        End If
+        curPre = curPre + Detalle(i).Suplemento
+        If IVAincSN <> intIvaInc_Pre And curPrecioFijo = -1000.1234 Then
+            If IVAincSN = True Then
+                curPre = curPre * (1 + Detalle(i).IVA + Detalle(i).RecEq)
+            Else
+                curPre = curPre / (1 + Detalle(i).IVA + Detalle(i).RecEq)
+            End If
+        End If
+Grabar:
+        Detalle(i).Precio = curPre
+        PonDetalleRS i
+    Next i
+Salir_PonPrecioDetalle:
+    Exit Sub
+Error_PonPrecioDetalle:
+    Select Case Err
+        Case Else
+            MBox "Error nº " & Err & " en PonPrecioDetalle" & vbCrLf & Err.Description
+            Resume Salir_PonPrecioDetalle
+            Resume Next
+    End Select
+End Sub
+
+Public Sub CargaIVAs()
+    Dim rs As Recordset
+    ReDim curIVAs(0)
+    ReDim curREs(0)
+    Set rs = CurrentDb.OpenRecordset("tbTipIVA", dbOpenSnapshot)
+    While Not rs.EOF
+        If rs("TipoIVA") > UBound(curIVAs) Then
+            ReDim Preserve curIVAs(rs("TipoIVA"))
+            ReDim Preserve curREs(rs("TipoIVA"))
+        End If
+        curIVAs(rs("TipoIVA")) = rs("IVA")
+        curREs(rs("TipoIVA")) = rs("RecargoEquivalencia")
+        rs.MoveNext
+    Wend
+    IVAsLoaded = True
+End Sub
+
+Public Sub PonTotalesTique()
+    On Error GoTo Error_PonTotalesTique
+    Dim i As Integer, j As Integer
+    Dim curI As Currency, curTBase As Currency, curTImporte As Currency, curTCantidad As Currency
+    Dim curB As Currency, curTIVA As Currency, curTRE As Currency, vIVA_Cab As Variant, vRE_Cab As Variant
+    Dim curBases() As Currency
+    If Not IVAsLoaded Then CargaIVAs
+    ReDim curBases(0 To UBound(curIVAs))
+    vIVA_Cab = -1: vRE_Cab = -1
+    For i = 1 To UBound(Detalle)
+        'If Detalle(i).Borrar Then GoTo Segi
+        curI = (Detalle(i).Cantidad * Detalle(i).Precio)
+        If IVAincSN Then
+            curB = curI / (1 + Detalle(i).IVA + Detalle(i).RecEq)
+            curTImporte = curTImporte + curI
+            curTBase = curTBase + curB
+        Else
+            curB = curI
+            curTBase = curTBase + curB
+            curTImporte = curTImporte + curB * (1 + Detalle(i).IVA + Detalle(i).RecEq)
+        End If
+        curTIVA = curTIVA + curB * Detalle(i).IVA
+        curTRE = curTRE + curB * Detalle(i).RecEq
+        For j = 0 To UBound(curIVAs)
+            If curIVAs(j) = Detalle(i).IVA Then
+                curBases(j) = curBases(j) + curB
+                Exit For
+            End If
+        Next j
+        curTCantidad = curTCantidad + Detalle(i).Cantidad
+        If vIVA_Cab = -1 Then
+            vIVA_Cab = Detalle(i).IVA
+        ElseIf vIVA_Cab <> Detalle(i).IVA Then
+            vIVA_Cab = Null
+        End If
+        If vRE_Cab = -1 Then
+            vRE_Cab = Detalle(i).RecEq
+        ElseIf vRE_Cab <> Detalle(i).RecEq Then
+            vRE_Cab = Null
+        End If
+Segi:
+    Next i
+    TotalTique = Round(curTImporte, 2)
+    TotalBase = Round(curTBase, 2)
+    TotalRE = Round(curTRE, 2)
+    TotalIVA = Round(curTIVA, 2)
+    IVA_Cab = vIVA_Cab
+    RE_Cab = vRE_Cab
+    If Fix(TotalTique - (TotalBase + TotalIVA + TotalRE)) > 0.01 Then MBox "No coincide total tique con suma de base + iva + re", vbExclamation
+    TotalCantidad = curTCantidad
+    DesgloseIVA = "-" & CentraChar("Base", 11, " ") & CentraChar("IVA %", 8, " ", True) & CentraChar("Imp. IVA", 9, " ") & "-" & vbCrLf
+    i = 0
+    For j = 0 To UBound(curBases)
+        If curBases(j) <> 0 Then
+            DesgloseIVA = DesgloseIVA & LlenaIzq(Format(curBases(j), "currency"), 12) & Centra(Format(curIVAs(j), "0.00%"), 8) & LlenaIzq(Format(curIVAs(j) * curBases(j), "currency"), 10) & vbCrLf
+            i = i + 1
+        End If
+    Next j
+    If i > 1 Then
+        DesgloseIVA = DesgloseIVA & LlenaChar("-", 30) & vbCrLf
+        DesgloseIVA = DesgloseIVA & LlenaIzq(Format(TotalBase, "currency"), 12) & Llena(" ", 8) & LlenaIzq(Format(TotalIVA + TotalRE, "currency"), 10) & vbCrLf
+    End If
+    DesgloseIVA = DesgloseIVA & "-" & space(28) & "-"
+    'If Len(DesgloseIVA) > 2 Then DesgloseIVA = RecDerTop(DesgloseIVA, 2, 0)
+    DesglosePagos = ""
+    'If UBound(Pagos) > 0 Then DesglosePagos = Centra("Pagos", 30) & vbCrLf
+    'If True Then DesglosePagos = Centra("-----", 30) & vbCrLf
+    If True Then DesglosePagos = DesglosePagos & Centra("-" & space(28) & "-", 30) & vbCrLf
+    
+    For j = 1 To UBound(Pagos)
+        DesglosePagos = DesglosePagos & Llena("    " & Pagos(j).FormaPago & ":" & LlenaChar(" ", 15), 15) & LlenaIzqChar(Format(Pagos(j).Cantidad, "currency"), 15, " ") & vbCrLf
+        If Pagos(j).Entrega <> Pagos(j).Cantidad Then
+            DesglosePagos = DesglosePagos & "     Entrega:" & LlenaIzqChar(Format(Pagos(j).Entrega, "currency"), 13, " ") & vbCrLf
+            DesglosePagos = DesglosePagos & "  Devolución:" & LlenaIzqChar(Format(Pagos(j).Devolucion, "currency"), 13, " ") & vbCrLf
+        End If
+    Next j
+    If TotalTique > TotalPagado Then
+        DesglosePagos = DesglosePagos & Llena("Pago pendiente:" & LlenaChar(" ", 15), 15) & LlenaIzqChar(Format(TotalTique - TotalPagado, "currency"), 15, " ") & vbCrLf
+    End If
+    If True Then DesglosePagos = DesglosePagos & Centra("-" & space(28) & "-", 30) & vbCrLf
+    If Len(DesglosePagos) > 2 Then DesglosePagos = RecDerTop(DesglosePagos, 2, 0)
+    
+    If IsOpenForm("frmTPV") Then
+        Dim frm As Form
+        Set frm = Forms("frmTPV")
+        If DbName <> CurrentDb.Name And frm.lstPagos.ListIndex <> -1 Then
+            For i = 1 To frm.lstPagos.ListCount
+                If frm.lstPagos.Selected(i) Then Exit For
+            Next i
+            If i <= frm.lstPagos.ListCount Then CuadraPagos (i)
+        End If
+    End If
+        
+Salir_PonTotalesTique:
+    Exit Sub
+Error_PonTotalesTique:
+    Select Case Err
+        Case Else
+            MBox "Error nº " & Err & " en PonTotalesTique" & vbCrLf & Err.Description
+            Resume Salir_PonTotalesTique
+            Resume Next
+    End Select
+End Sub
+
+Public Sub CuadraPagos(iPago As Integer)
+    'Cuadra el total de pagos con el total del tique aplicandose sobre el pago de índice iPago
+    On Error GoTo Error_CuadraPagos
+    Dim i As Integer, strSQL As String
+    Dim curI As Currency, curTPagos As Currency
+    For i = 1 To UBound(Pagos)
+        curTPagos = curTPagos + Pagos(i).Cantidad
+Segi:
+    Next i
+    If TotalTique <> curTPagos Then
+        Pagos(iPago).Cantidad = Pagos(iPago).Cantidad + TotalTique - curTPagos
+        strSQL = "UPDATE tbCajaDet SET Cantidad = " & ComaPunto(Pagos(iPago).Cantidad)
+        strSQL = strSQL & " WHERE IdCajaDet = " & Pagos(iPago).IdCajaDet
+        gdb.Execute strSQL, dbFailOnError
+        PonFormaPagadoTiques gdb, gdb, Me.IdTickCab_
+    End If
+Salir_CuadraPagos:
+    Exit Sub
+Error_CuadraPagos:
+    Select Case Err
+        Case Else
+            MBox "Error nº " & Err & " en CuadraPagos" & vbCrLf & Err.Description
+            Resume Salir_CuadraPagos
+            Resume Next
+    End Select
+End Sub
+
+'Private Function dimeUltimoTique(strSerie As String) As Long
+'    Dim lngNumTique As Long
+'    lngNumTique = Nz(DameValorParam("UltimoNumeroTique_Serie_" & strSerie, "Ventas"), 0)
+'    dimeUltimoTique = lngNumTique
+'End Function
+
+Private Function DameNumeroTique(Optional intSinSumar As Integer = False, Optional ByRef intVentas As Integer) As Long ') As Long
+    On Error GoTo Error_DameNumeroTique
+    Dim lngNumTique As Long, iR As Integer, i As Integer
+    Static intNumTiqueX_Puesto_Central As Integer, strSerie As String
+    If intNumTiqueX_Puesto_Central = 0 Then
+        intNumTiqueX_Puesto_Central = Nz(DameValorParam("PuestoNumTiqueXPuestoCentral"), 2)
+        strSerie = Nz(DameValorParam("PuestoSerie"), "")
+    End If
+    If intNumTiqueX_Puesto_Central = 1 Then
+        lngNumTique = Nz(DameValorParam("UltimoNumeroTique_Serie"), 0) + 1
+        If Nz(DLookup("IdTickCab", "tbTickCab", "NumTicket = " & lngNumTique & " And Serie = '" & strSerie & "'"), 0) <> 0 Then
+            lngNumTique = Nz(DMax("NumTicket", "tbTickCab", "Serie = '" & strSerie & "'"), 0) + 1
+        End If
+    Else
+        intVentas = True
+        lngNumTique = Nz(DameValorParam("UltimoNumeroTique", "Ventas"), 0) + 1
+        If Nz(DLookup("IdTickCab", "tbTickCab", "NumTicket = " & lngNumTique), 0) <> 0 Then
+            lngNumTique = Nz(DMax("NumTicket", "tbTickCab"), 0) + 1
+        End If
+    End If
+    If intSinSumar Then
+        lngNumTique = lngNumTique - 1
+        GoTo Resultado
+    End If
+PVParam:
+    If intNumTiqueX_Puesto_Central = 1 Then
+        iR = PonValorParam("UltimoNumeroTique_Serie", lngNumTique, 4)
+    Else
+        iR = PonValorParam("UltimoNumeroTique", lngNumTique, 4, "Ventas")
+    End If
+    If Not iR Then
+        i = i + 1
+        If i < 50 Then GoTo PVParam
+        lngNumTique = 0
+    End If
+Resultado:
+    DameNumeroTique = lngNumTique
+Salir_DameNumeroTique:
+    Exit Function
+Error_DameNumeroTique:
+    Select Case Err
+        Case Else
+            MBox "error nº " & Err & " en DameNumeroTique" & vbCrLf & Err.Description
+            Resume Salir_DameNumeroTique
+    End Select
+End Function
+
+Public Function BorrarSiUltimoTique() As Integer
+    On Error GoTo Error_BorrarSiUltimoTique
+    Dim lngUltimoTique As Long, iR As Integer, i As Integer
+    Dim intVentas  As Integer
+    lngUltimoTique = DameNumeroTique(True, intVentas)
+    If NumTique = lngUltimoTique Then
+        gdb.Execute "DELETE * FROM tbTickCab WHERE IdTickCab = " & IdTickCab, dbFailOnError
+        IsLoaded = False
+        CargaTiqueTPV
+        lngUltimoTique = lngUltimoTique - 1
+PVParam:
+        If intVentas Then
+            iR = PonValorParam("UltimoNumeroTique", lngUltimoTique, 4, "Ventas")
+        Else
+            iR = PonValorParam("UltimoNumeroTique_Serie", lngUltimoTique, 4)
+        End If
+        If Not iR Then
+            i = i + 1
+            If i < 50 Then GoTo PVParam
+        End If
+        
+    Else
+        MBox "No se puede borrar por no ser el último tique", vbExclamation
+    End If
+    BorrarSiUltimoTique = True
+Salir_BorrarSiUltimoTique:
+    Exit Function
+Error_BorrarSiUltimoTique:
+    Select Case Err
+        Case Else
+            MBox "error nº " & Err & " en BorrarSiUltimoTique" & vbCrLf & Err.Description
+            Resume Salir_BorrarSiUltimoTique
+    End Select
+End Function
+
+'Public Sub CambiaSerie(strNuevaSerie As String)
+'    On Error GoTo Error_CambiaSerie
+'    Dim strSeCambioSerie As String, lngNumTiqueSeCambioSerie As Long, strSQL As String, lngIdTickCab As Long, rs As Recordset
+'    Dim lngNewNumTique As Long
+'    If strNuevaSerie = Serie Then Exit Sub
+'    lngNewNumTique = DameNumeroTique(strNuevaSerie)
+'    If lngNewNumTique = 0 Then
+'        mbox "No se pudo asignar Nº de tique", vbExclamation
+'        GoTo Salir_CambiaSerie
+'    End If
+'    If dimeUltimoTique(Serie) = NumTique Then
+'        PonValorParam "UltimoNumeroTique_Serie_" & Serie, NumTique - 1, 4, "Ventas"
+'    Else
+'        lngNumTiqueSeCambioSerie = NumTique
+'        strSeCambioSerie = Serie
+'    End If
+'    NumTique = lngNewNumTique
+'    Serie = strNuevaSerie
+'    SalveTique
+'    If lngNumTiqueSeCambioSerie > 0 Then
+'        Set rs = gdb.OpenRecordset("tbTickCab", dbOpenDynaset)
+'        rs.AddNew
+'        rs("IdPuesto") = gllngIdPuesto
+'        rs("Serie") = strSeCambioSerie
+'        rs("NumTicket") = lngNumTiqueSeCambioSerie
+'        lngIdTickCab = rs("IdTickCab")
+'        rs("Hecho") = True
+'        rs("Fecha") = Date
+'        If Format(rs("Fecha"), "hh:nn") <= glstrTicketsHoraCambioDia Then
+'            rs("Fecha") = rs("Fecha") - 1
+'        End If
+'        rs("Hora") = Now
+'        rs.Update
+'        Set rs = gdb.OpenRecordset("tbTickDet", dbOpenDynaset)
+'        rs.AddNew
+'        rs("IdTickCab") = lngIdTickCab
+'        rs("Concepto") = "-> " & Serie & Format(NumTique, "00000")
+'        rs("Precio") = 1
+'        rs.Update
+'    End If
+'Salir_CambiaSerie:
+'    Exit Sub
+'Error_CambiaSerie:
+'    Select Case Err
+'        Case Else
+'            mbox "Error nº " & Err & " en CambiaSerie" & vbCrLf & Err.Description
+'            Resume Salir_CambiaSerie
+'    End Select
+'End Sub
+
+'Private Function DameNumTique() As Long
+'    Dim lngNewNumTique As Long
+'    lngNewNumTique = Nz(DameValorParam("UltimoNumeroTique"), 0) + 1
+'    If Nz(DLookup("IdTickCab", "tbTickCab", "NumTicket = " & lngNewNumTique), 0) <> 0 Then
+'        lngNewNumTique = Nz(DMax("NumTicket", "tbTickCab"), 0) + 1
+'    End If
+'    PonValorParam "UltimoNumeroTique", lngNewNumTique, 4
+'    DameNumTique = lngNewNumTique
+'End Function
+
+Public Function SalveTique(Optional intNoComanda As Integer = False) As Integer
+    On Error GoTo Error_SalveTique
+    If IdTickCab = 0 Then GoTo SalveTrue
+    Dim strSQL As String, rs As Recordset, i As Integer, j As Integer
+    Dim lngNumTique As Long, intEnviarComanda As Integer, strTag As String
+    Static intComandasAlGuardarTiqueEnviarSNP As Integer, intEnviandoComanda As Integer
+    If LineasDetalle_ = 0 And IdLugar_ = 0 And NumTique_ = -1 Then ' No se graba un tique sin líneas de detalle ni mesa
+        'mbox "No se graba tique sin lineas", vbExclamation
+        If IsOpenForm("frmTPV") Then
+            Forms("frmTPV").glngIdTickCab = 0
+            GoTo SalveTrue
+        End If
+    End If
+    If NumTique = -1 Then
+        lngNumTique = DameNumeroTique() 'Serie)
+        If lngNumTique = 0 Then
+            MBox "No se pudo asignar Nº de tique"
+            GoTo Salir_SalveTique
+        Else
+            NumTique = lngNumTique
+            If IsOpenForm("frmTPV") Then Forms("frmTPV").lblNumTicket.Caption = Serie & IIf(Len(Serie) > 0, "-", "") & NumTique
+        End If
+    End If
+    
+    If IdTickCab <> -1 Then
+        If Not IsCli Then
+            strSQL = "SELECT * FROM tbTickCab WHERE IdTickCab = " & IdTickCab
+        Else
+            strSQL = "SELECT * FROM tbcli_TickCab WHERE IdTickCab = " & IdTickCab
+        End If
+        Set rs = gdb.OpenRecordset(strSQL, dbOpenDynaset)
+        If rs.EOF Then
+            MBox "No se encontró Tique Id: " & IdTickCab & " en DB: " & gdb.Name
+            Exit Function
+        End If
+        rs.Edit
+    Else
+        Set gdb = CurrentDb
+        If Not IsCli Then
+            Set rs = gdb.OpenRecordset("tbTickCab", dbOpenDynaset, dbAppendOnly)
+        Else
+            Set rs = gdb.OpenRecordset("tbcli_TickCab", dbOpenDynaset, dbAppendOnly)
+        End If
+        rs.AddNew
+        IdTickCab = rs("IdTickCab")
+    End If
+    rs("IdPuesto") = IdPuesto
+    rs("Serie") = Serie
+    rs("NumTicket") = NumTique
+    rs("Fecha") = FechaTiq
+    rs("Hora") = FechaIni
+    rs("HoraHecho") = FechaFin
+    rs("TotalTicket") = TotalTique
+    rs("TotalBase") = TotalBase
+    rs("TotalIVA") = TotalIVA
+    rs("TotalRE") = TotalRE
+    rs("IVA_cab") = IIf(IsNumeric(IVA_Cab), IVA_Cab, Null)
+    rs("RE_Cab") = RE_Cab
+    rs("IdTrf") = IdTarifa
+    rs("CodTipTick") = CodTipTick
+    rs("IdBarm") = IdBarm
+    rs("IvaInc_Det") = IVAincSN
+    rs("IdFactura") = IdFactura
+    rs("Hecho") = Hecho
+    rs("IdLugar") = IdLugar
+    rs("Impreso") = Impreso
+    rs("Adultos") = Comensales
+    rs("PendienteEnviarComanda") = PendienteEnviarComanda
+    rs("CodEstadoT") = Me.CodEstadoT_
+    rs.Update
+    If CabeceraTicket = "" Then
+        If Not IsCli Then
+            strSQL = "DELETE * FROM tbTickCab_Cli WHERE IdTickCab = " & IdTickCab
+        Else
+            strSQL = "DELETE * FROM tbcli_TickCab_Cli WHERE IdTickCab = " & IdTickCab
+        End If
+        gdb.Execute strSQL, dbFailOnError
+    Else
+        If Not IsCli Then
+            strSQL = "SELECT * FROM tbTickCab_Cli WHERE IdTickCab = " & IdTickCab
+        Else
+            strSQL = "SELECT * FROM tbcli_TickCab_Cli WHERE IdTickCab = " & IdTickCab
+        End If
+        Set rs = gdb.OpenRecordset(strSQL, dbOpenDynaset)
+        If rs.EOF Then
+            rs.AddNew
+            rs("IdTickCab") = IdTickCab
+        Else
+            rs.Edit
+        End If
+        rs("IdCliente") = IdCliente
+        rs("NIF") = NIF
+        rs("CabeceraTicket") = CabeceraTicket
+        rs.Update
+    End If
+    If Not IsCli Then
+        strSQL = "SELECT * FROM tbTickDet WHERE IdTickCab = " & IdTickCab
+    Else
+        strSQL = "SELECT * FROM tbcli_TickDet WHERE IdTickCab = " & IdTickCab
+    End If
+    Set rs = gdb.OpenRecordset(strSQL, dbOpenDynaset)
+    For i = 1 To UBound(Detalle)
+        If Nz(Detalle(i).IdTickDet, 0) > 0 Then
+            rs.FindFirst "IdTickDet = " & Detalle(i).IdTickDet
+            If rs.NoMatch Then
+                MBox "No se encontró IdTickDet = " & Detalle(i).IdTickDet
+                GoTo SiguienteDetalle
+            End If
+            'If Detalle(i).Borrar = True Then
+            '    rs.Delete
+            '    GoTo SiguienteDetalle
+            'End If
+            rs.Edit
+        Else
+            'If Detalle(i).Borrar = True Then
+            '    GoTo SiguienteDetalle
+            'End If
+            rs.AddNew
+            rs("IdTickCab") = IdTickCab
+            Detalle(i).IdTickDet = Nz(rs("IdTickDet"), CLng(rs("IdTickCab") & Format(i * 2, "00")))
+            If Detalle(i).IdTickDet < 0 Then
+                Detalle(i).IdTickDet = CLng(rs("IdTickCab") & Format(i * 2, "00"))
+            End If
+            rs("IdTickDet") = Detalle(i).IdTickDet
+        End If
+        rs("IdArtV") = Detalle(i).IdArtV
+        rs("Orden") = i * 2 'Detalle(i).Orden
+        rs("Cantidad") = Detalle(i).Cantidad
+        rs("Concepto") = Left(Detalle(i).Concepto, 30)
+        rs("Precio") = Detalle(i).Precio
+        rs("IVA") = Detalle(i).IVA
+        rs("RecEq") = Detalle(i).RecEq
+        If Nz(rs("Comanda"), "") <> "X" Then rs("Comanda") = Detalle(i).Comanda
+        rs("DtoSN") = Detalle(i).DtoSN
+        rs("EnviarComanda") = Detalle(i).EnviarComanda
+        rs("EnComanda") = Detalle(i).EnComanda
+        rs("InvitacionSN") = Detalle(i).InvitacionSN
+        rs("IdDestino") = Detalle(i).IdDestino
+        rs.Update
+        If Not IsCli Then
+            gdb.Execute "DELETE * FROM tbTickDet_Notas WHERE IdTickDet = " & Detalle(i).IdTickDet
+            If Detalle(i).Nota <> "" Or Detalle(i).Suplemento <> 0 Or Detalle(i).Posiciones <> "" Then
+                gdb.Execute "INSERT INTO tbTickDet_Notas(IdTickDet, Nota, Suplemento, Posiciones) SELECT " & Detalle(i).IdTickDet & " AS Id, '" & Detalle(i).Nota & "' as Nota, " & ComaPunto(Detalle(i).Suplemento) & " As Supl, " & IIf(Detalle(i).Posiciones = "", "Null", ConComillas(Detalle(i).Posiciones)) & " As Posiciones", dbFailOnError
+            End If
+        End If
+SiguienteDetalle:
+    Next i
+    If PendienteEnviarComanda = True And Not intEnviandoComanda And Not Hecho And Not intNoComanda Then
+        intEnviandoComanda = True
+        If IsOpenForm("frmTPV") Then
+            If Forms("frmTPV").glngIdTickCab = Me.IdTickCab_ Then
+                If intComandasAlGuardarTiqueEnviarSNP = 0 Then intComandasAlGuardarTiqueEnviarSNP = Nz(DameValorParam("ComandasAlDescargarTiqueEnviarComandaSNP"), 2)
+                Select Case intComandasAlGuardarTiqueEnviarSNP
+                    Case 1: intEnviarComanda = True
+                    Case 2: intEnviarComanda = False
+                    Case 3
+                        intEnviarComanda = MBox("¿Enviar comanda pendiente?", vbYesNo) = vbYes
+                End Select
+                If intEnviarComanda Then
+                    'strTag = Nz(Forms("frmTPV")("btnComanda").Tag, "")
+                    'Forms("frmTPV")("btnComanda").Tag = "Llama_SalveTique"
+                    'Call Forms("frmTPV").btnComanda_Click
+                    'Forms("frmTPV")("btnComanda").Tag = strTag
+                    Me.EnviarComanda True
+                End If
+            End If
+        End If
+        intEnviandoComanda = False
+    End If
+    If Not IsCli Then
+        RefacturarTiqueSiHayFactura Me, True
+        'If Not IsCurrentDb Then Sincronizar_CliTickCab DbName, IdTickCab
+        If Len(Me.NIF_) > 1 Then
+            Dim intR As Integer
+            intR = SalveTiqueAsCli
+            If intR = True Then
+                'mbox "Se guardó tique de cliente: " & Me.CabeceraTicket_, vbInformation
+            Else
+                'mbox "No se guardó tique de cliente: " & Me.CabeceraTicket_, vbExclamation
+            End If
+        End If
+    End If
+    
+SalveTrue:
+    SalveTique = True
+Salir_SalveTique:
+    Exit Function
+Error_SalveTique:
+    Select Case Err
+        Case Else
+            MBox "error nº " & Err & " en SalveTique" & vbCrLf & Err.Description, vbExclamation
+            Resume Salir_SalveTique
+    End Select
+End Function
+
+Public Function SalveTiqueAsCli() As Integer
+    On Error GoTo Error_SalveTiqueAsCli
+    If IdTickCab = 0 Then GoTo SalveTrue
+    Dim strSQL As String, rs As Recordset, i As Integer, j As Integer
+    Dim lngNumTique As Long, intEnviarComanda As Integer, strTag As String
+    Dim mIdTickCab As Long
+    Static intComandasAlGuardarTiqueEnviarSNP As Integer, intEnviandoComanda As Integer
+    If LineasDetalle_ = 0 And IdLugar_ = 0 And NumTique_ = -1 Then ' No se graba un tique sin líneas de detalle ni mesa
+        'mbox "No se graba tique sin lineas", vbExclamation
+        If IsOpenForm("frmTPV") Then
+            If Forms("frmTPV").glngIdTickCab = Me.IdTickCab_ Then
+                Forms("frmTPV").glngIdTickCab = 0
+                GoTo SalveTrue
+            End If
+        End If
+    End If
+    If NumTique = -1 Then
+        MBox "No se guarda un tique sin número en Clientes", vbExclamation
+        GoTo SalveTrue
+    End If
+    
+    If IdTickCab <> -1 Then
+        'If Not IsCli Then
+        '    strSQL = "SELECT * FROM tbTickCab WHERE IdTickCab = " & IdTickCab
+        'Else
+            strSQL = "SELECT * FROM tbcli_TickCab WHERE IdPuesto = " & IdPuesto
+            strSQL = strSQL & " AND NumTicket = " & NumTique
+            strSQL = strSQL & " AND Nz(Serie,'') = " & ConComillas(Nz(Serie, ""))
+        'End If
+        Set rs = CurrentDb.OpenRecordset(strSQL, dbOpenDynaset)
+        If rs.EOF Then
+            rs.AddNew
+        Else
+            rs.Edit
+        End If
+        mIdTickCab = rs("IdTickCab")
+    Else
+        MBox "No se guarda un tique sin número en Clientes", vbExclamation
+        GoTo SalveTrue
+    End If
+    rs("IdPuesto") = IdPuesto
+    rs("Serie") = Serie
+    rs("NumTicket") = NumTique
+    rs("Fecha") = FechaTiq
+    rs("Hora") = FechaIni
+    rs("HoraHecho") = FechaFin
+    rs("TotalTicket") = TotalTique
+    rs("TotalBase") = TotalBase
+    rs("TotalIVA") = TotalIVA
+    rs("TotalRE") = TotalRE
+    rs("IVA_cab") = IIf(IsNumeric(IVA_Cab), IVA_Cab, Null)
+    rs("RE_Cab") = RE_Cab
+    rs("IdTrf") = IdTarifa
+    rs("CodTipTick") = CodTipTick
+    rs("IdBarm") = IdBarm
+    rs("IvaInc_Det") = IVAincSN
+    rs("IdFactura") = IdFactura
+    rs("Hecho") = Hecho
+    rs("IdLugar") = IdLugar
+    rs("Impreso") = Impreso
+    rs("Adultos") = Comensales
+    rs("PendienteEnviarComanda") = PendienteEnviarComanda
+    rs.Update
+    If CabeceraTicket = "" Then
+        'If Not IsCli Then
+        '    strSQL = "DELETE * FROM tbTickCab_Cli WHERE IdTickCab = " & IdTickCab
+        'Else
+            strSQL = "DELETE * FROM tbcli_TickCab_Cli WHERE IdTickCab = " & mIdTickCab
+        'End If
+        CurrentDb.Execute strSQL, dbFailOnError
+    Else
+        'If Not IsCli Then
+        '    strSQL = "SELECT * FROM tbTickCab_Cli WHERE IdTickCab = " & IdTickCab
+        'Else
+            strSQL = "SELECT * FROM tbcli_TickCab_Cli WHERE IdTickCab = " & mIdTickCab
+        'End If
+        Set rs = CurrentDb.OpenRecordset(strSQL, dbOpenDynaset)
+        If rs.EOF Then
+            rs.AddNew
+            rs("IdTickCab") = mIdTickCab
+        Else
+            rs.Edit
+        End If
+        rs("IdCliente") = IdCliente
+        rs("NIF") = NIF
+        rs("CabeceraTicket") = CabeceraTicket
+        rs.Update
+    End If
+    'If Not IsCli Then
+    '    strSQL = "SELECT * FROM tbTickDet WHERE IdTickCab = " & IdTickCab
+    'Else
+        strSQL = "SELECT * FROM tbcli_TickDet WHERE IdTickCab = " & mIdTickCab
+    'End If
+    Set rs = CurrentDb.OpenRecordset(strSQL, dbOpenDynaset)
+    For i = 1 To UBound(Detalle)
+        If Nz(Detalle(i).IdTickDet, 0) > 0 Then
+            rs.FindFirst "IdTickDet = " & CLng(mIdTickCab & Format(i * 2, "00")) 'Detalle(i).IdTickDet
+            If rs.NoMatch Then
+                'If Detalle(i).Borrar = True Then GoTo SiguienteDetalle
+                rs.AddNew
+                rs("IdTickCab") = mIdTickCab
+                rs("IdTickDet") = CLng(mIdTickCab & Format(i * 2, "00"))
+            Else
+                'If Detalle(i).Borrar = True Then
+                '    rs.Delete
+                '    GoTo SiguienteDetalle
+                'End If
+                rs.Edit
+            End If
+        Else
+            GoTo SiguienteDetalle
+            'If Detalle(i).Borrar = True Then
+            '    GoTo SiguienteDetalle
+            'End If
+            'rs.AddNew
+            'rs("IdTickCab") = IdTickCab
+            'Detalle(i).IdTickDet = Nz(rs("IdTickDet"), CLng(rs("IdTickCab") & Format(i * 2, "00")))
+            'If Detalle(i).IdTickDet < 0 Then
+            '    Detalle(i).IdTickDet = CLng(rs("IdTickCab") & Format(i * 2, "00"))
+            'End If
+            'rs("IdTickDet") = Detalle(i).IdTickDet
+        End If
+        rs("IdArtV") = Detalle(i).IdArtV
+        rs("Orden") = i * 2 'Detalle(i).Orden
+        rs("Cantidad") = Detalle(i).Cantidad
+        rs("Concepto") = Left(Detalle(i).Concepto, 30)
+        rs("Precio") = Detalle(i).Precio
+        rs("IVA") = Detalle(i).IVA
+        rs("RecEq") = Detalle(i).RecEq
+        If Nz(rs("Comanda"), "") <> "X" Then rs("Comanda") = Detalle(i).Comanda
+        rs("DtoSN") = Detalle(i).DtoSN
+        rs("EnviarComanda") = Detalle(i).EnviarComanda
+        rs("EnComanda") = Detalle(i).EnComanda
+        rs("InvitacionSN") = Detalle(i).InvitacionSN
+        rs("IdDestino") = Detalle(i).IdDestino
+        rs.Update
+SiguienteDetalle:
+    Next i
+    strSQL = "DELETE * FROM tbcli_TickDet WHERE IdTickCab = " & mIdTickCab & " AND IdTickDet > " & CLng(mIdTickCab & Format((UBound(Detalle) * 2), "00"))
+    CurrentDb.Execute strSQL, dbFailOnError
+SalveTrue:
+    SalveTiqueAsCli = True
+Salir_SalveTiqueAsCli:
+    Exit Function
+Error_SalveTiqueAsCli:
+    Select Case Err
+        Case Else
+            MBox "error nº " & Err & " en SalveTiqueAsCli" & vbCrLf & Err.Description
+            Resume Salir_SalveTiqueAsCli
+    End Select
+End Function
+
+
+
+
+Public Sub BorraDetalle(ii As Integer)
+    On Error GoTo Error_BorraDetalle
+    Dim intIvaInc_Pre As Integer, i As Integer, j As Integer, k As Integer
+    Dim curPre As Currency
+    Dim strSQL As String
+    If ii = 0 Then
+        ReDim BorrarDetalle(UBound(Detalle))
+        BorrarDetalle = Detalle
+        ReDim Detalle(0)
+    Else
+        ReDim BorrarDetalle(1)
+        BorrarDetalle(1) = Detalle(ii)
+        If ii < UBound(Detalle) Then MueveDetalleA_Linea ii, UBound(Detalle)
+        ReDim Preserve Detalle(UBound(Detalle) - 1)
+    End If
+    FechaFin = Now()
+    BorrarDetalleBorrado
+    k = LineasDetalle_
+    If ii > k Then ii = k
+    gintDetalleSelect = ii
+    PonTotalesTique
+    CargaTiqueTPV
+
+    'SalveTique
+Salir_BorraDetalle:
+    Exit Sub
+Error_BorraDetalle:
+    Select Case Err
+        Case Else
+            MBox "Error nº " & Err & " en BorraDetalle" & vbCrLf & Err.Description
+            Resume Salir_BorraDetalle
+            Resume Next
+    End Select
+End Sub
+
+Public Sub PonDetalleRS(i As Integer)
+    Detalle(i).RowSource = Detalle(i).IdTickDet & ";" _
+                            & """" & IIf(Detalle(i).InvitacionSN, "*", "") & IIf(Detalle(i).Cantidad = 0, "", Detalle(i).Cantidad & " ") & Detalle(i).Concepto & """;""" _
+                            & Llena(Detalle(i).Comanda, 1) & LlenaIzq(IIf(Detalle(i).Cantidad * Detalle(i).Precio = 0, "-", Format(Detalle(i).Cantidad * Detalle(i).Precio, "Fixed")), 8) & IIf(Detalle(i).Suplemento <> 0, "+", "") & """;"
+End Sub
+
+Public Sub MueveDetalle(i0 As Integer, intUpDown As Integer)
+    On Error GoTo Error_MueveDetalle
+    Dim i As Integer, j As Integer, k As Integer
+    Dim tdAux As TickDet
+    If intUpDown = 1 Then
+        i = i0 - 1
+    ElseIf intUpDown = 2 Then
+        i = i0 + 1
+    Else
+        i = i0
+    End If
+    If i = 0 Then i = 1
+    If i > UBound(Detalle) Then i = UBound(Detalle)
+    tdAux = Detalle(i)
+    Detalle(i) = Detalle(i0)
+    Detalle(i0) = tdAux
+    'se mantiene el orden...
+    tdAux.Orden = Detalle(i).Orden
+    Detalle(i).Orden = Detalle(i0).Orden
+    Detalle(i0).Orden = tdAux.Orden
+    gintDetalleSelect = i
+Salir_MueveDetalle:
+    Exit Sub
+Error_MueveDetalle:
+    Select Case Err
+        Case Else
+            MBox "Error nº " & Err & " en MueveDetalle" & vbCrLf & Err.Description
+            Resume Salir_MueveDetalle
+            Resume Next
+    End Select
+End Sub
+
+Public Sub MueveDetalleA_Linea(i0 As Integer, intLin As Integer)
+    On Error GoTo Error_MueveDetalleA_Linea
+    Dim i As Integer, j As Integer, intPaso As Integer
+    Dim tdAux As TickDet
+    i = intLin
+    If i <= 0 Then i = 1
+    If i > UBound(Detalle) Then i = UBound(Detalle)
+    gintDetalleSelect = i
+    If i = i0 Then Exit Sub
+    If i > i0 Then
+        intPaso = 1
+    Else
+        intPaso = -1
+    End If
+    For j = i0 To i - intPaso Step intPaso
+        tdAux = Detalle(j)
+        Detalle(j) = Detalle(j + intPaso)
+        Detalle(j + intPaso) = tdAux
+    Next j
+    For i = 1 To UBound(Detalle)
+        Detalle(i).Orden = i * 2
+        If Detalle(i).IdTickDet < 0 Then Detalle(i).IdTickDet = -1 * i
+    Next i
+    If IsOpenForm("frmTPV") Then RecargaTPV_Detalle
+        
+Salir_MueveDetalleA_Linea:
+    Exit Sub
+Error_MueveDetalleA_Linea:
+    Select Case Err
+        Case Else
+            MBox "Error nº " & Err & " en MueveDetalleA_Linea" & vbCrLf & Err.Description
+            Resume Salir_MueveDetalleA_Linea
+            Resume Next
+    End Select
+End Sub
+
+
+Public Function MuestraTiqueTxt(Optional lngW As Long = 0, Optional intDetalleTC As Integer = 1) As String
+    On Error GoTo Error_MuestraTiqueTxt
+    Dim strSQL As String, rs As Recordset, strR As String, strM As String
+    Dim intAnchoConc As Integer, lngW0 As Long, strConcepto As String, strConceptoL1 As String, strConceptoL2 As String
+    Dim strCli As String
+    Dim i As Integer
+    intAnchoConc = Nz(DameValorParam("MuestraTiques_AnchoConcepto"), 17)
+    lngW0 = 3117
+    If lngW = 0 Then
+    Else
+        intAnchoConc = intAnchoConc * (lngW / lngW0) - 3
+    End If
+    Select Case intDetalleTC
+        Case 2
+            strSQL = strSQL & " AND tbTickDet.Comanda <>' '"
+        Case 3
+            strSQL = strSQL & " AND tbTickDet.Comanda ='/'"
+    End Select
+    strR = "Tique nº: " & Serie & NumTique & LlenaIzq(IIf(FechaFin <> 0, Format(FechaFin, "HH:NN"), Format(FechaIni, "HH:NN") & "*"), 12 + intAnchoConc - Len("Tique nº: " & NumTique)) & vbCrLf
+    If CabeceraTicket <> "" Then strR = strR & ExtraeLin(CabeceraTicket, 1) & vbCrLf
+    strR = strR & "Fecha: " & Format(FechaIni, "dd/mm/yy") & " " & Format(FechaIni, "hh:nn") & vbCrLf
+    If IdLugar > 0 Then
+        strM = Mesa
+        If strM <> "" Then strR = strR & "Mesa: " & LlenaIzq(strM, 6 + intAnchoConc) & vbCrLf
+    End If
+    If IdBarm > 0 Then
+        strM = Atiende
+        If strM <> "" Then strR = strR & "Atiende: " & LlenaIzq(strM, 3 + intAnchoConc) & vbCrLf
+    End If
+    strR = strR & " Total Tique:" & LlenaIzq(Format(TotalTique, "currency"), intAnchoConc) & vbCrLf
+    strR = strR & " ------------" & LlenaChar("-", intAnchoConc) & vbCrLf
+    For i = 1 To UBound(Detalle)
+        If Detalle(i).IdArtV = -1 Then
+            strR = strR & " " & LlenaChar("·", intAnchoConc + 12) & vbCrLf
+            GoTo SiguienteLinea
+        End If
+        strConcepto = Detalle(i).Concepto & IIf(Detalle(i).Nota <> "", " + " & Detalle(i).Nota, "")
+        If Len(strConcepto) < intAnchoConc Then
+            strR = strR & Detalle(i).Comanda & LlenaIzq(CeroZ(Detalle(i).Cantidad, ""), 3) & Llena(" " & strConcepto, intAnchoConc) & LlenaIzq(Format(CeroZ(Detalle(i).Cantidad, 0) * Detalle(i).Precio * (1 + IIf(IVAincSN = True, 0, Detalle(i).IVA)), "#,##0.00"), 7) & vbCrLf
+        Else
+            strConceptoL1 = Mid(strConcepto, 1, intAnchoConc + 7)
+            strConceptoL2 = Mid(strConcepto, intAnchoConc + 7)
+            strR = strR & Detalle(i).Comanda & LlenaIzq(CeroZ(Detalle(i).Cantidad, ""), 3) & Llena(" " & strConceptoL1, intAnchoConc + 7) & vbCrLf
+            strR = strR & " " & LlenaIzq(" ", 3) & Llena(" " & strConceptoL2, intAnchoConc) & LlenaIzq(Format(CeroZ(Detalle(i).Cantidad, 0) * Nz(Detalle(i).Precio, 0) * (1 + IIf(IVAincSN = True, 0, Nz(Detalle(i).IVA, 0))), "#,##0.00"), 7) & vbCrLf
+        End If
+SiguienteLinea:
+        
+    Next i
+Salir_MuestraTiqueTxt:
+    MuestraTiqueTxt = strR
+    Exit Function
+Error_MuestraTiqueTxt:
+    Select Case Err
+        Case Else
+            MBox "error nº " & Err & " en MuestraTiqueTxt" & vbCrLf & Err.Description
+            Resume Salir_MuestraTiqueTxt
+    End Select
+
+End Function
+
+Public Function AplicarDto(lngIdArtV As Long, Optional lngIdTrfMod As Long = 0)
+    Dim strSQL As String, rs0 As Recordset, rs1 As Recordset, rs2 As Recordset
+    Dim curTotal As Currency, intHayVarios As Integer
+    Dim curDto As Currency, strCodArtV  As String
+    Dim frm As Form, strXML As String
+    Dim v As Variant, intR As Integer, v2 As Variant
+    Dim i As Integer, j As Integer, strConcepto As String
+    On Error GoTo Error_AplicarDto
+    If lngIdTrfMod <> 0 Then
+        ModificarTarifa lngIdTrfMod
+        Exit Function
+    End If
+    For i = 1 To UBound(Detalle)
+        If Detalle(i).DtoSN = True Then BorraDetalle (i)
+    Next i
+    SalveTique
+    strSQL = "SELECT DISTINCTROW tbTickDet.IVA, tbTickDet.RecEq, Sum([tbTickDet]![Cantidad]*[tbTickDet]![Precio]) AS Importe"
+    strSQL = strSQL & " FROM tbTickDet"
+    strSQL = strSQL & " GROUP BY tbTickDet.IdTickCab, tbTickDet.IVA, tbTickDet.RecEq"
+    strSQL = strSQL & " HAVING (((tbTickDet.IdTickCab)=" & IdTickCab & "))"
+    strSQL = strSQL & " ORDER BY tbTickDet.IVA;"
+    Set rs0 = CurrentDb.OpenRecordset(strSQL, dbOpenSnapshot)
+    strXML = DLookup("FuncionPrecio", "tbArtV", "IdArtV = " & lngIdArtV)
+    v = DimeXML(strXML, "Dto")
+    If Not IsNumeric(v) Then
+        v = DimeTeclado(2, "Introduzca % de descuento", 0)
+        If Not IsNumeric(v) Then Exit Function
+        v = v / 100
+    End If
+    curDto = CCur(v)
+    If Not rs0.EOF Then
+        rs0.MoveLast
+        rs0.MoveFirst
+        If rs0.RecordCount > 1 Then
+            intHayVarios = True
+        End If
+    End If
+    While Not rs0.EOF
+        curTotal = Redondea(-1 * rs0("Importe") * curDto, 2)
+        If curTotal = 0 Then GoTo Siguiente
+        If intHayVarios Then
+        End If
+        If v = 1 Then
+            strConcepto = "Invitación"
+        Else
+            strConcepto = "Descuento " & Format(v, "percent")
+        End If
+        AñadeDetalle 0, 1, , , , , , strConcepto, rs0("IVA"), curTotal, True
+Siguiente:
+        rs0.MoveNext
+    Wend
+    PonTotalesTique
+Salir_AplicarDto:
+    Exit Function
+Error_AplicarDto:
+    Select Case Err
+        Case Else
+            MBox "Error nº " & Err & " en AplicarDto" & vbCrLf & Err.Description
+            Resume Salir_AplicarDto
+            Resume Next
+    End Select
+End Function
+
+Public Function BuscaEnDetalle(valor As Variant, strCampo As String, Optional intPosicionIni As Integer = 1, Optional intPosicionFin As Integer = 1000) As Integer
+    On Error GoTo Error_BuscaEnDetalle
+    Dim i As Integer, iLin As Integer
+    iLin = UBound(Detalle)
+    If intPosicionFin < iLin Then iLin = intPosicionFin
+    'If iLin = 0 Then GoTo Salir_BuscaEnDetalle
+    If iLin < intPosicionIni Then GoTo Salir_BuscaEnDetalle
+    
+    Select Case strCampo
+        Case "Concepto"
+            For i = intPosicionIni To iLin
+                If Concepto_(i) Like (CStr(valor)) Then
+                    GoTo Salir_BuscaEnDetalle
+                End If
+            Next i
+            If i > iLin Then i = 0
+        Case "Orden"
+            For i = intPosicionIni To iLin
+                If Orden_(i) = (CCur(valor)) Then
+                    GoTo Salir_BuscaEnDetalle
+                End If
+            Next i
+            If i > iLin Then i = 0
+        Case "Posiciones"
+            MBox "No implementado busca en Posiciones"
+            'For i = intPosicionIni To iLin
+            '    If Posiciones_(i) Like ("*" & CStr(valor) & "*") Then
+            '        GoTo Salir_BuscaEnDetalle
+            '    End If
+            'Next i
+            'If i > iLin Then i = 0
+        Case "IdArtV"
+            For i = intPosicionIni To iLin
+                If IdArtV_(i) = CLng(valor) Then
+                    GoTo Salir_BuscaEnDetalle
+                End If
+            Next i
+            If i > iLin Then i = 0
+    End Select
+Salir_BuscaEnDetalle:
+    BuscaEnDetalle = i
+    Exit Function
+Error_BuscaEnDetalle:
+    Select Case Err
+        Case Else
+            MBox "Error nº " & Err & " en BuscaEnDetalle" & vbCrLf & Err.Description
+            Resume Salir_BuscaEnDetalle
+    End Select
+    
+    
+End Function
+
+Public Sub PonDetalleSQ(iDet As Integer, strSilla As String, curQ As Currency)
+' en el campo posiciones de tbTickDetNotas pone la cantidad correspondiente a la Silla: <S1>1</S1): Silla 1 , Cantidad 1
+    Dim strXML As String
+    strXML = Detalle(iDet).Posiciones
+    PonXML strXML, "S" & strSilla, ComaPunto(curQ), True
+    Detalle(iDet).Posiciones = strXML
+End Sub
+
+Public Function DimeQDetalleS(iDet As Integer, strSilla As String) As Currency
+' en el campo posiciones de tbTickDetNotas pone la cantidad correspondiente a la Silla: <S1>1</S1): Silla 1 , Cantidad 1
+    DimeQDetalleS = Nz(DimeXML(Detalle(iDet).Posiciones, "S" & strSilla), 0)
+End Function
+
+Public Sub AgrupaConceptosDetalle_old(iLin As Integer)
+    On Error GoTo Error_AgrupaConceptosDetalle
+    Dim intIni As Integer, i As Integer, strEP1 As String, strEP2 As String, strC As String
+    Dim intUpDown As Integer
+    intUpDown = -1
+Up_Down_Ini:
+    i = iLin
+    While i > 1
+        i = i + intUpDown
+        If i < 1 Or i > UBound(Detalle) Then GoTo Up_Down_End
+        If Detalle(i).IdArtV = -1 Then GoTo Up_Down_End
+        strEP1 = "": strEP2 = ""
+        strC = CHP(Detalle(i).Concepto, strEP1)
+        If strC = CHP(Detalle(iLin).Concepto, strEP2) And Detalle(i).EnComanda = Detalle(iLin).EnComanda And Detalle(i).Precio = Detalle(iLin).Precio Then
+            Detalle(i).Cantidad = Detalle(iLin).Cantidad + Detalle(i).Cantidad
+            PonDetalleRS i
+            If strEP1 <> "" Or strEP2 <> "" Then
+                Detalle(i).Concepto = strC & SumaEP(strC, strEP1, strEP2) & ")"
+            End If
+            Detalle(iLin).Borrar = True
+            GoTo FinisH
+        End If
+    Wend
+Up_Down_End:
+    If intUpDown = -1 Then
+        intUpDown = 1
+        GoTo Up_Down_Ini
+    End If
+FinisH:
+    If Detalle(iLin).Borrar Then BorraDetalle iLin
+    
+Salir_AgrupaConceptosDetalle:
+    
+    Exit Sub
+Error_AgrupaConceptosDetalle:
+    Select Case Err
+        Case Else
+            MBox "error nº " & Err & " en AgrupaConceptosDetalle" & vbCrLf & Err.Description
+            Resume Salir_AgrupaConceptosDetalle
+    End Select
+
+
+End Sub
+
+Public Sub AgrupaConceptosDetalle_solo_down(iLin As Integer)
+    On Error GoTo Error_AgrupaConceptosDetalle_solo_down
+    Dim intIni As Integer, i As Integer, strEP1 As String, strEP2 As String, strC As String
+    
+    i = iLin
+    While True
+        i = i + 1
+        If i < 1 Or i > UBound(Detalle) Then GoTo FinisH
+        If Detalle(i).IdArtV = -1 Then GoTo FinisH
+        strEP1 = "": strEP2 = ""
+        strC = CHP(Detalle(i).Concepto & Detalle(i).Nota, strEP1)
+        If strC = CHP(Detalle(iLin).Concepto & Detalle(iLin).Nota, strEP2) And Detalle(i).EnComanda = Detalle(iLin).EnComanda And Detalle(i).Precio = Detalle(iLin).Precio Then
+            Detalle(iLin).Cantidad = Detalle(iLin).Cantidad + Detalle(i).Cantidad
+            PonDetalleRS iLin
+            If strEP1 <> "" Or strEP2 <> "" Then
+                Detalle(iLin).Concepto = strC & SumaEP(strC, strEP1, strEP2) & ")"
+            End If
+            Detalle(i).Borrar = True
+            'GoTo Finish
+        End If
+    Wend
+FinisH:
+    For i = LineasDetalle_ To iLin Step -1
+        If Detalle(i).Borrar Then BorraDetalle i
+    Next i
+    
+Salir_AgrupaConceptosDetalle_solo_down:
+    
+    Exit Sub
+Error_AgrupaConceptosDetalle_solo_down:
+    Select Case Err
+        Case Else
+            MBox "error nº " & Err & " en AgrupaConceptosDetalle_solo_down" & vbCrLf & Err.Description
+            Resume Salir_AgrupaConceptosDetalle_solo_down
+    End Select
+
+
+End Sub
+
+Public Function CHP(strConcepto As String, ByRef strEntreParentesis As String) As String
+    CHP = Concepto_Hasta_Parentesis(strConcepto, strEntreParentesis)
+End Function
+
+Public Function Concepto_Hasta_Parentesis(strConcepto As String, ByRef strEntreParentesis As String) As String
+    Dim i As Integer, j As Integer, strR As String
+    strR = strConcepto
+    i = InStr(strConcepto, "(")
+    If i > 0 Then
+        j = InStr(i + 1, strConcepto, ")")
+        If j > i Then
+            strR = Mid(strConcepto, 1, i)
+            strEntreParentesis = Mid(strConcepto, i + 1, j - i - 1)
+        End If
+    End If
+    Concepto_Hasta_Parentesis = strR
+End Function
+
+Public Function SumaEP(strConcepto As String, strEP1 As String, strEP2 As String) As String
+    'Procedimiento que suma discriminando opciones de un concpeot con opciones
+    'por ej. Solomillo (1 AP, 2 PH) + Solomillo (1 PH, 1 MH)= Solomillo ( 1 AP, 3 PH, 1 MH)
+    On Error GoTo Error_SumaEP
+    Dim i As Integer, j As Integer, k As Integer, strC As String, strOps() As String, curOps() As Currency
+    Dim intNumOps As Integer, int_1_2 As Integer, strEP As String, strR As String
+    strC = Nz(DLookup("Concepto", "tbArtMenu", "Concepto Like '" & Replace(strConcepto, "(", "|") & "*'"), "")
+    i = InStr(strC, "|")
+Bucle:
+    j = i
+    i = InStr(j + 1, strC, "|")
+    If i = 0 Then GoTo SegiBucle
+    intNumOps = intNumOps + 1
+    ReDim Preserve strOps(1 To intNumOps)
+    strOps(intNumOps) = Mid(strC, j + 1, i - j - 1)
+    GoTo Bucle
+SegiBucle:
+    ReDim curOps(1 To intNumOps)
+    int_1_2 = 1
+    For i = 1 To UBound(strOps)
+Buc_1_2:
+        strEP = IIf(int_1_2 = 1, strEP1, strEP2)
+        j = InStr(strEP, strOps(i))
+        If j > 0 Then
+            If j - 2 > 1 Then
+                k = InStrRev(strEP, " ", j - 2)
+                curOps(i) = curOps(i) + CCur(Mid(strEP, k, j - k))
+            Else
+                curOps(i) = curOps(i) + CCur(Mid(strEP, 1, j - 1))
+            End If
+            'If k > 0 Then
+            '    curOps(i) = curOps(i) + CCur(Mid(strEP, k, j - k))
+            'End If
+        End If
+        If int_1_2 = 1 Then
+            int_1_2 = 2
+            GoTo Buc_1_2
+        Else
+            int_1_2 = 1
+        End If
+    Next i
+    
+    For i = 1 To UBound(strOps)
+        If curOps(i) <> 0 Then strR = strR & curOps(i) & " " & strOps(i) & ", "
+    Next i
+    If Len(strR) > 2 Then strR = RecDerTop(strR, 2, 0)
+    
+Salir_SumaEP:
+    SumaEP = strR
+    Exit Function
+    
+Error_SumaEP:
+    Select Case Err
+        Case Else
+            MBox "Error nº " & Err & " en SumaEP" & vbCrLf & Err.Description
+            Resume Salir_SumaEP
+    End Select
+
+End Function
+
+
+Public Sub NuevoTiqueOLD(Optional lngIdLugar As Long = 0, _
+                    Optional lngOtroCodTipTick As Long = 0, _
+                    Optional lngIdBarm As Long = 0, _
+                    Optional lngIdTrf As Long = 0)
+    Dim v As Variant ', intAdultos As Integer, intNiños As Integer, strSQL As String
+    Dim strNP As String, vVP As Variant, lngIdTickCab As Long
+    On Error GoTo Error_NuevoTiqueOLD
+    IdTickCab = 0
+    'If Nz(DameValorParam("CallCargaPanel"), True) = True Then Call Carga_Panel(0, Me("subfrmPanel").Form, True)
+    If glintTiquesInicializados = False Then
+        gllngIdBarm = Nz(DLookup("IdBarm", "tbBarm", "Predeterminado = True"), 0)
+        gllngIdTrf = DameValorParam("PuestoTarifaPredeterminada")
+        glintTarifasXHoras = Nz(DameValorParam("TicketsTarifasSegunHorasSN"), False)
+        glstrSerie = Nz(DameValorParam("PuestoSerie"), "")
+        glintPedirBarman = Nz(DameValorParam("PuestoTicketsAlAbrirBarm"), False)
+        glintPedirMesa = Nz(DameValorParam("PuestoTicketsAlAbrirPedirMesa"), False)
+        glintPedirComensales = Nz(DameValorParam("PuestoPedirComensales"), False)
+        If IsNull(DLookup("IdTrf", "tbTipTrf", "IdTrf = " & gllngIdTrf)) Then
+            MBox ("Se debe indicar tarifa predeterminada del puesto")
+            Exit Sub
+        End If
+        glintIvaInc = Nz(DameValorParam("TicketsDetalleIVAIncluidoSNT"), 5)
+        If glintIvaInc = 5 Then
+            glintIvaInc = DameValorParam("TicketsIvaIncluido")
+        End If
+        'If glintIvaInc = 3 Then
+        '    glintIvaInc = Nz(DLookup("IvaIncluidoSN", "tbTipTrf", "IdTrf = " & gllngIdTrf), True)
+        'End If
+        
+        gllngCodTipTick = Nz(DLookup("CodTipTick", "tbTipTick", "Predet = True"), 0)
+        gllngIdPuesto = Nz(DLookup("IdPuesto", "cfgPuestos", "NombrePuesto= " & ConComillas(Nz(DameValorParam("PuestoNombre"), ""))), 0)
+        'gstrPuesto = Nz(DLookup("NombrePuesto", "cfgPuestos", "IdPuesto = " & glngIdPuesto), "¿Puesto?")
+        glintImprimirTiquesSiempre = Nz(DameValorParam("PuestoTicketsImprimirSiempre"), False)
+        glstrTicketsHoraCambioDia = Nz(DameValorParam("TicketsHoraCambioDia"), "04:00")
+        glintTiquesInicializados = True
+    End If
+    If glintPedirMesa = True And lngIdLugar = 0 Then
+        lngIdLugar = DimeIdLugar()
+        If lngIdLugar = 0 Then Exit Sub
+    End If
+    
+    Dim dtN As Date, rsCb As Recordset
+    Set rsCb = CurrentDb.OpenRecordset("tbTickCab", dbOpenDynaset, dbAppendOnly)
+    rsCb.AddNew
+    dtN = Now()
+    rsCb("Fecha") = Date
+    rsCb("Hora") = dtN
+    If Format(rsCb("Hora"), "hh:nn") <= glstrTicketsHoraCambioDia Then
+        rsCb("Fecha") = rsCb("Fecha") - 1
+    End If
+    rsCb("Serie") = glstrSerie
+    If lngOtroCodTipTick = 0 Then
+        rsCb("CodTipTick") = gllngCodTipTick
+    Else
+        rsCb("CodTipTick") = lngOtroCodTipTick
+    End If
+    rsCb("IdPuesto") = gllngIdPuesto
+    rsCb("NumTicket") = Nz(DameValorParam("PuestoUltimoNumeroTique"), 0) + 1
+    If Nz(DLookup("IdTickCab", "tbTickCab", "Serie = '" & rsCb("Serie") & "' AND NumTicket = " & rsCb("NumTicket")), 0) <> 0 Then
+        rsCb("NumTicket") = Nz(DMax("NumTicket", "tbTickCab", "Serie = '" & rsCb("Serie") & "'"), 0) + 1
+    End If
+    If lngIdLugar <> 0 Then
+        rsCb("IdLugar") = lngIdLugar
+        rsCb("IdTrf") = Nz(DLookup("IdTrf", "tbEspa_Lugares", "IdLugar = " & lngIdLugar), gllngIdTrf)
+    Else
+        'rsCb("IdLugar") = 0
+        rsCb("IdTrf") = IIf(lngIdTrf = 0, gllngIdTrf, lngIdTrf)
+    End If
+    If glintIvaInc = 3 Then
+        rsCb("IvaInc_Det") = Nz(DLookup("IvaIncluidoSN", "tbTipTrf", "IdTrf = " & rsCb("IdTrf")), True)
+    Else
+        rsCb("IvaInc_Det") = glintIvaInc
+    End If
+    If glintTarifasXHoras = True Then
+        rsCb("IdTrf") = DimeTarifaHora(Now)
+    Else
+        
+        'rsCb("IdTrf") = gllngIdTrf
+    End If
+    gllngIdBarm = lngIdBarm
+    If gllngIdBarm = 0 And Nz(DCount("IdBarm", "tbBarm", "Activo = True"), 0) = 1 Then
+        gllngIdBarm = Nz(DLookup("IdBarm", "tbBarm", "Activo = True"), 0)
+    End If
+    If glintPedirBarman = True And gllngIdBarm = 0 Then
+IniBoxBarm:
+        AbreBox "002"
+        If Not IsOpenForm("frm_BotonBox") Then
+            gllngIdBarm = Nz(DLookup("IdBarm", "tbBarm", "Predeterminado = True"), 0)
+            GoTo FinBoxBarm
+        End If
+        v = Forms("frm_BotonBox")("lblResult").Caption
+        DoCmd.Close acForm, "frm_BotonBox"
+        If v = "camar_on-off" Then
+            DoCmd.OpenForm "frmModiBarmActi", , , , , acDialog
+            GoTo IniBoxBarm
+        End If
+        If Not IsNumeric(v) Then
+            gllngIdBarm = Nz(DLookup("IdBarm", "tbBarm", "Predeterminado = True"), 0)
+            GoTo FinBoxBarm
+        End If
+        gllngIdBarm = v
+    End If
+FinBoxBarm:
+    rsCb("IdBarm") = gllngIdBarm
+    vVP = rsCb("NumTicket")
+    If glintPedirComensales = True Then
+        rsCb("Adultos") = Nz(DimeTeclado(2, "Nº de comensales", rsCb("Adultos")), rsCb("Adultos"))
+    End If
+    lngIdTickCab = rsCb("IdTickCab")
+    rsCb("Operacion") = "·"
+    rsCb.Update
+    PonValorParam "PuestoUltimoNumeroTique", vVP, 4
+    Call LoadIdTickCab(lngIdTickCab)
+Salir_NuevoTiqueOLD:
+    Exit Sub
+Error_NuevoTiqueOLD:
+    Select Case Err
+        Case Else
+            MBox "Error nº " & Err & " en NuevoTiqueOLD" & vbCrLf & Err.Description
+            Resume Salir_NuevoTiqueOLD
+    End Select
+End Sub
+
+Public Sub BorrarDetalleBorrado()
+    'aquí se puede implementar el registro de líneas borradas en tiques
+    'sin tener en cuenta las que se borren antes de haber salvado el tique, es decir los que no tengan IdTickDet
+    Dim i As Integer, strSQL As String, iTop As Integer
+    iTop = UBound(BorrarDetalle)
+    'If UBound(Detalle) = 0 Then iTop = iTop-1'esto es para no eliminar todas las líneas pero lo quito porque da problemas...
+    For i = 1 To iTop
+        If BorrarDetalle(i).IdTickDet > 0 Then
+            strSQL = "DELETE * FROM tbTickDet"
+            strSQL = strSQL & " WHERE IdTickDet = " & BorrarDetalle(i).IdTickDet
+            gdb.Execute strSQL, dbFailOnError
+        End If
+    Next i
+    ReDim BorraDetalle(0)
+End Sub
+
+Public Sub InicializaTique()
+    IdTickCab = 0: IdPuesto = 0: Serie = "": NumTique = 0
+    FechaTiq = 0: FechaIni = 0: FechaFin = 0
+    IVAincSN = 0: RecEqSN = 0
+    IdTarifa = 0: Tarifa = ""
+    CodTipTick = 0: TipoTique = ""
+    IdBarm = 0: Atiende = ""
+    IdLugar = 0: Mesa = ""
+    TotalBase = 0: IVA_Cab = 0: TotalIVA = 0: RE_Cab = 0: TotalRE = 0:
+    TotalTique = 0: TotalPagado = 0: DesglIVA = 0: Comensales = 0: TotalCantidad = 0:
+    Impreso = False: IdCliente = 0: NIF = "": CabeceraTicket = ""
+    IdFactura = 0: NumFactura = ""
+    PendienteEnviarComanda = False: Hecho = False
+    ReDim Detalle(0): ReDim BorrarDetalle(0): ReDim Pagos(0)
+    IsLoaded = False: gintDetalleSelect = 0
+
+End Sub
+
+Public Sub Genera_auxTique()
+    'Genera registros en auxTiqueCabe, auxTiqueDeta y auxTiquePago
+    On Error GoTo Error_Genera_auxTique
+    Dim strSQL As String, strAux As String, tdf As TableDef, i As Integer
+    Static intIniciado As Integer
+    Dim intPrimer As Integer, strDIva As String, strDPagos As String
+    Call PonTotalesTique
+    strAux = DirectorioDe(CurrentDb.Name) & "R4AUX.mdb"
+    'CurrentDb.Execute "DELETE * FROM auxTiqueCabe Where IdTickCab = " & IdTickCab, dbFailOnError
+    CurrentDb.Execute "DELETE * FROM auxTiqueCabe", dbFailOnError
+    strSQL = "SELECT " & IdTickCab & " AS IdTickCab, " & IdPuesto & " AS IdPuesto, " & NumTique & " AS NumTicket, " & ll(Serie) & " AS Serie, " _
+            & cp(CDbl(FechaFin)) & " AS HoraHecho, " & cp(CDbl(FechaTiq)) & " AS FechaTiq, " & cp(TotalTique) & " AS TotalTicket, " & cp(TotalBase) & " AS TotalBase, " & cp(TotalIVA) & " AS TotalIVA, " _
+            & cp(TotalRE) & " AS TotalRE, " & IIf(IVAincSN, -1, 0) & " AS IvaInc_Det, " & cp(IVA_Cab) & " AS IVA_Cab, " & cp(RE_Cab) & " AS RE_Cab, " & ll(Atiende) & " AS Atiende, " _
+            & ll(Tarifa) & " AS Tarifa, " & ll(Mesa) & " AS Mesa, " & ll(TipoTique) & " AS TipoTique, " & ll(NumFactura) & " AS NumFactura, " & Comensales & " AS Comensales, " _
+            & ll(CabeceraTicket) & " AS CabeceraTicket, " & IdCliente & " AS IdCliente, " & ll(NIF) & " AS NIF, " & ll(DesgloseIVA) & " AS DesgloseIVA, " & ll(DesglosePagos) & " AS DesglosePagos"
+    strSQL = "INSERT INTO auxTiqueCabe " & strSQL & " FROM tb1"
+    CurrentDb.Execute strSQL, dbFailOnError
+    CurrentDb.Execute "DELETE * FROM auxTiqueDeta", dbFailOnError
+    intPrimer = True
+    For i = 1 To UBound(Detalle)
+        strSQL = "SELECT " & IdTickCab & " AS IdTickCab, " & Detalle(i).Orden & " AS Orden, " & cp(Detalle(i).Cantidad, 4) & " AS Cantidad, " _
+        & ll(Detalle(i).Concepto) & " AS Concepto, " & cp(Detalle(i).Precio, 2) & " AS Precio, " & cp(Detalle(i).IVA, 4) & " AS IVA, " & cp(Detalle(i).RecEq, 4) & " AS REcEq, " _
+        & IIf(Detalle(i).InvitacionSN, -1, 0) & " AS InvitacionSN, " & ll(Detalle(i).Nota) & " AS Nota," & IIf(Detalle(i).PesoSN, -1, 0) & " AS PesoSN, " _
+        & Detalle(i).IdArtV & " AS IdArtV"
+        strSQL = "INSERT INTO auxTiqueDeta " & strSQL & " FROM tb1"
+        CurrentDb.Execute strSQL, dbFailOnError
+    Next i
+    CurrentDb.Execute "DELETE * FROM auxTiquePago", dbFailOnError
+    intPrimer = True
+    For i = 1 To UBound(Pagos)
+        strSQL = "SELECT " & IdTickCab & " AS IdTickCab, " & cp(Pagos(i).Cantidad, 2) & " AS Cantidad, " & ll(Pagos(i).FormaPago) & " AS FormaPago, " _
+                & cp(Pagos(i).Entrega, 2) & " AS Entrega, " & cp(Pagos(i).Devolucion, 2) & " AS Devolucion"
+        strSQL = "INSERT INTO auxTiquePago " & strSQL & " FROM tb1"
+        CurrentDb.Execute strSQL, dbFailOnError
+    Next i
+Salir_Genera_auxTique:
+    Exit Sub
+Error_Genera_auxTique:
+    Select Case Err
+        Case 3078
+            Resume Next
+        Case Else
+            MBox "Error nº " & Err & " en Genera_auxTique" & vbCrLf & Err.Description
+            Resume Salir_Genera_auxTique
+    End Select
+
+End Sub
+
+Public Function ll(str As Variant) As String
+    If IsNull(str) Then
+        ll = "Null"
+    Else
+        ll = ConComillas(CStr(str))
+    End If
+End Function
+
+Public Function cp(str As Variant, Optional intDecimales As Integer = 0) As String
+    If IsNull(str) Then
+        str = "Null"
+    ElseIf intDecimales > 0 Then str = Format(CDbl(str), "0." & Replace(space(intDecimales), " ", "0"))
+    End If
+    cp = ComaPunto(str)
+End Function
+
+Public Function Imprimir(intShift As Integer, Optional strFile As String = "", _
+                          Optional intComprueba As Integer = True, _
+                          Optional intBloc As Integer = 88, _
+                          Optional intFileAppend As Integer = False, _
+                          Optional intImpresionWinDosPdf As Integer = 0, _
+                          Optional ByRef strFilePdfOut As String) As Boolean
+    'Imprimir un tique desde cualquier mdb
+    
+    On Error GoTo Error_Imprimir
+    Dim strTiq_printer_name As String, intTiq_printer_index As Integer, strCurrent_printer_name As String, intCurrent_printer_index As Integer
+    intCurrent_printer_index = -1
+    If IdTickCab = 0 Then GoTo Salir_Imprimir
+    If Me.Impreso_ = True Then
+        If Nz(DameValorParam("AccesoAlReimprimirTiques"), False) = True Then
+            Dim sAcc As String
+            sAcc = AccesoEmpleado("Acceso a reimprimir tique")
+            If sAcc = "" Or sAcc = "0" Then GoTo Salir_Imprimir
+            If InStr(sAcc, "#*") = 0 Then
+                MsgBox "No autorizado/a", vbExclamation
+                GoTo Salir_Imprimir
+            End If
+        End If
+    End If
+    Dim strSaludosPie As String, strSaludosParam As String, i As Integer, stDocName As String
+    Dim ntVistaPrevia As Integer, intNumCopias As Integer, strCarpeta As String, strSQL As String
+    'Dim cT As cTique
+    'Set cT = New cTique
+    'cT.LoadIdTickCab IdTickCab, strMDB
+    Call Genera_auxTique
+'    DoCmd.OpenReport "rptTique", acPreview
+'Exit Sub
+    strCarpeta = Nz(DLookup("DirectorioDeConexion", "1myConexionTablas", "NombreTabla ='tbcli_TickCab'"), "")
+    If strCarpeta = "" Then strCarpeta = DirectorioDe(CurrentDb.Name)
+    If strFile = "***" Then
+        strCarpeta = strCarpeta & Nz(DLookup("CodCliente", "tbClientes", "IdCliente = " & IdCliente), "0000")
+        If Dir(strCarpeta, vbDirectory) = "" Then MkDir (strCarpeta)
+        If NumTique = 0 Then
+            strFile = strCarpeta & "\Tique_Id_" & IdTickCab & ".txt"
+        Else
+            strFile = strCarpeta & "\Tique_" & Serie & NumTique & ".txt"
+        End If
+    End If
+    
+    strSaludosPie = Nz(DLookup("PieTique", "tbTipTick", "CodTipTick = " & CodTipTick), "")
+    If strSaludosPie <> "" Then
+        strSaludosParam = Nz(DameValorParam("TicketsSaludos"), "")
+        PonValorParam "TicketsSaludos", IIf(Len(strSaludosParam) > 0, strSaludosParam & vbCrLf, "") & strSaludosPie
+    End If
+    If intImpresionWinDosPdf = 0 Then intImpresionWinDosPdf = Nz(DameValorParam("TicketsImpresionPor"), 1)
+    If (intShift And acShiftMask) <> 0 Then intImpresionWinDosPdf = IIf(intImpresionWinDosPdf = 1, 2, 1)
+    intNumCopias = Nz(DameValorParam("TicketsNumCopias"), 1)
+    If (intShift And acCtrlMask) <> 0 Then intNumCopias = 1
+
+    If intImpresionWinDosPdf = 2 Then
+        'mbox "No implementada la impresión directa a impresora"
+        If (intShift And acCtrlMask) <> 0 Then intBloc = True
+        If UBound(Detalle) > Nz(DameValorParam("TicketsLineasDetalle"), 15) Then
+            For i = 1 To intNumCopias
+                ImprimirTicketDOS IdTickCab, 1, 1, strFile, intFileAppend, intBloc
+            Next i
+        Else
+            For i = 1 To intNumCopias
+                ImprimirTicketDOS IdTickCab, , 1, strFile, intFileAppend, intBloc
+            Next i
+        End If
+    ElseIf intImpresionWinDosPdf = 1 Then
+        stDocName = Nz(DameValorParam("TicketsRPT"), "rptTique")
+        If DameValorParam("ImpresionInformes") = 1 And (intShift And acCtrlMask) = 0 Then
+            strCurrent_printer_name = Application.Printer.DeviceName
+            strTiq_printer_name = Nz(DameValorParam("TicketsImpresoraWindows"), strCurrent_printer_name)
+            'If strTiq_printer_name <> strCurrent_printer_name Then
+            For i = 0 To Application.Printers.Count - 1
+                If Application.Printers.Item(i).DeviceName = strTiq_printer_name Then
+                    intTiq_printer_index = i
+                End If
+                'If Application.Printers.Item(i).DeviceName = "Samsung ML-2010 Series" Then 'current_printer_name Then
+                If Application.Printers.Item(i).DeviceName = strCurrent_printer_name Then
+                    intCurrent_printer_index = i
+                End If
+            Next
+            If intTiq_printer_index = -1 Then
+                MBox "La impresora '" & strTiq_printer_name & "' no se ha encontrado en este ordenador.", vbExclamation
+                Exit Function
+            End If
+            
+            Rem -- Exit here if the current printer was not found
+            If intCurrent_printer_index = -1 Then
+                MBox "La impresora predeterminada: '" & strCurrent_printer_name & "' no se ha encntrado en este ordenador." & _
+                    " Without this printer the code will not be able to restore the original printer selection.", vbExclamation
+                Exit Function
+            End If
+            
+            Rem -- Set the printer
+            Application.Printer = Application.Printers(intTiq_printer_index)
+            For i = 1 To intNumCopias
+                DoCmd.OpenReport stDocName, acViewNormal, , "IdTickCab = " & IdTickCab
+            Next i
+        Else
+            DoCmd.OpenReport stDocName, acViewPreview, , "IdTickCab = " & IdTickCab
+        End If
+    Else '3=Pdf
+        stDocName = Nz(DameValorParam("TicketsRPT"), "rptTique")
+        Dim intCabeSNres As Integer, intLogoSNres As Integer, lngIdTickCab As Long, strNumTicket As String
+        intCabeSNres = Nz(DameValorParam("TicketsCabeceraSN"), True)
+        intLogoSNres = Nz(DameValorParam("TicketsLogoSN"), True)
+        PonValorParam "TicketsCabeceraSN", Nz(DameValorParam("TicketsPDF_CabeceraSN"), True), 1
+        PonValorParam "TicketsLogoSN", Nz(DameValorParam("TicketsPDF_LogotipoSN"), True), 1
+        strNumTicket = Nz(DLookup("[Serie] ", "auxTiqueCabe", "IdTickCab = " & Me.IdTickCab_), "") & Nz(DLookup("[NumTicket]", "auxTiqueCabe", "IdTickCab = " & Me.IdTickCab_), "")
+        strFilePdfOut = PrintReportAsPDF(stDocName, "IdTickCab = " & Me.IdTickCab_, "Facs\Tique_" & strNumTicket & ".pdf", "Tique " & strNumTicket, False, , , False)
+        PonValorParam "TicketsCabeceraSN", intCabeSNres
+        PonValorParam "TicketsLogoSN", intLogoSNres
+        
+    End If
+    If strSaludosPie <> "" Then
+        PonValorParam "TicketsSaludos", strSaludosParam
+    End If
+    Imprimir = True
+Salir_Imprimir:
+    If intCurrent_printer_index > -1 Then Application.Printer = Application.Printers(intCurrent_printer_index)
+    Exit Function
+Error_Imprimir:
+    Select Case Err
+        Case Else
+            MBox "error nº " & Err & " en Imprimir" & vbCrLf & Err.Description
+            Resume Salir_Imprimir
+    End Select
+End Function
+
+Public Sub ModificarTarifa(Optional lngIdTrfMod As Long = 0)
+    Dim i As Integer
+    On Error GoTo Error_ModificarTarifa
+    If IdTickCab = 0 Then Exit Sub
+    If Hecho = True Then Exit Sub
+    If lngIdTrfMod = 0 Then lngIdTrfMod = Nz(SeleccionDe("TM", "Modificar", "Seleccione Dto. - Suplemento"), 0)
+    If lngIdTrfMod = 0 Then Exit Sub
+    'AplicarDto
+    Dim strSQL As String, rs0 As Recordset, rs1 As Recordset, rs2 As Recordset
+    Dim curTotal As Currency, intHayVarios As Integer
+    Dim curVar As Currency, strCodArtV  As String
+    Dim frm As Form, strXML As String
+    Dim v As Variant, intR As Integer
+    Dim strConcepto As String, strFamilias As String, curAntIVA As Currency, intVisibleEnDetalle As Integer
+    Dim j As Integer
+Bucle:
+    For i = 1 To UBound(Detalle)
+        If Detalle(i).DtoSN = True Then
+            BorraDetalle (i)
+            j = 1
+            Exit For
+        End If
+    Next i
+    If j = 1 Then
+        j = 0
+        GoTo Bucle
+    End If
+    SalveTique
+    'Call PonPrecioDetalle(0) 'vuelve a aplicar la tarifa vigente
+    strConcepto = Nz(DLookup("Descuento_Suplemento", "tbTrfModificadores", "IdTrfMod = " & lngIdTrfMod), "¿?")
+    strSQL = "SELECT * FROM tbTrfModificadores WHERE Descuento_Suplemento =" & ConComillas(strConcepto)
+    Set rs1 = CurrentDb.OpenRecordset(strSQL, dbOpenSnapshot)
+    While Not rs1.EOF
+        lngIdTrfMod = rs1("IdTrfMod")
+        strConcepto = rs1("Descripcion")
+        curVar = Nz(rs1("Variacion"), 0)
+        If curVar = 0 Then
+            curVar = Nz(DimeTeclado(2, "Introduzca " & strConcepto), 0)
+            If Abs(curVar) > 1 Then curVar = curVar / 100
+            If curVar > 0 Then
+                intR = MBox("¿Es un descuento?", vbYesNo)
+                If intR = vbYes Then curVar = curVar * -1
+            End If
+            strConcepto = strConcepto & " " & Format(curVar, "0.0%")
+        End If
+        strFamilias = SpNz(rs1("Aplicable_a_familias"), "Todas")
+        intVisibleEnDetalle = Nz(rs1("VisibleEnDetalleSN"), True)
+        If intVisibleEnDetalle = True Then
+            SalveTique
+            strSQL = "SELECT DISTINCTROW tbTickDet.IVA, tbTickDet.RecEq, Sum([tbTickDet]![Cantidad]*[tbTickDet]![Precio]) AS Importe"
+            strSQL = strSQL & " FROM tbTickDet"
+            strSQL = strSQL & " WHERE (((tbTickDet.IdTickCab)=" & IdTickCab & "))"
+            strSQL = strSQL & " GROUP BY tbTickDet.IVA, tbTickDet.RecEq"
+            strSQL = strSQL & " ORDER BY tbTickDet.IVA;"
+            Set rs0 = CurrentDb.OpenRecordset(strSQL, dbOpenSnapshot)
+            If Not rs0.EOF Then
+                rs0.MoveLast
+                rs0.MoveFirst
+                If rs0.RecordCount > 1 Then
+                    intHayVarios = True
+                End If
+            End If
+            strSQL = "SELECT DISTINCTROW tbTickDet.IVA, tbArtV.IdFamilia, tbTickDet.RecEq, Sum([tbTickDet]![Cantidad]*[tbTickDet]![Precio]) AS Importe"
+            strSQL = strSQL & " FROM tbTickDet LEFT JOIN tbArtV On tbTickDet.IdArtV = tbArtV.IdArtV"
+            strSQL = strSQL & " WHERE (((tbTickDet.IdTickCab)=" & IdTickCab & "))"
+            strSQL = strSQL & " GROUP BY tbTickDet.IVA, tbTickDet.RecEq, IdFamilia"
+            strSQL = strSQL & " ORDER BY tbTickDet.IVA, IdFamilia;"
+            Set rs0 = CurrentDb.OpenRecordset(strSQL, dbOpenSnapshot)
+            curAntIVA = -1
+            While Not rs0.EOF
+                If rs0("IVA") <> curAntIVA Then
+                    If curAntIVA <> -1 And curTotal <> 0 Then
+                        If intHayVarios Then
+                            AñadeDetalle 0, 1, , , , , , strConcepto & " IVA: " & Format(curAntIVA, "0%"), curAntIVA, curTotal, True
+                        Else
+                            AñadeDetalle 0, 1, , , , , , strConcepto, curAntIVA, curTotal, True
+                        End If
+                    End If
+                    curAntIVA = rs0("IVA")
+                    curTotal = 0
+                End If
+                If strFamilias <> "Todas" Then
+                    If InStr(strFamilias, "|" & rs0("IdFamilia") & "¬") = 0 Then GoTo Siguiente
+                End If
+                curTotal = curTotal + Redondea(rs0("Importe") * curVar, 2)
+Siguiente:
+                rs0.MoveNext
+            Wend
+            If curAntIVA <> -1 And curTotal <> 0 Then
+                If intHayVarios Then
+                    AñadeDetalle 0, 1, , , , , , strConcepto & " IVA: " & Format(curAntIVA, "0%"), curAntIVA, curTotal, True
+                Else
+                    AñadeDetalle 0, 1, , , , , , strConcepto, curAntIVA, curTotal, True
+                End If
+            End If
+        Else
+            For i = 1 To UBound(Detalle)
+                Detalle(i).Precio = Detalle(i).Precio * (1 + curVar)
+                PonDetalleRS i
+            Next i
+        End If
+        rs1.MoveNext
+    Wend
+    
+    PonTotalesTique
+    CargaTiqueTPV
+    
+Salir_ModificarTarifa:
+    Exit Sub
+Error_ModificarTarifa:
+    Select Case Err
+        Case Else
+            MBox "Error nº " & Err & " en ModificarTarifa" & vbCrLf & Err.Description
+            Resume Salir_ModificarTarifa
+    End Select
+    
+End Sub
+
+
+Public Sub AgruparConceptos()
+    Dim i As Integer
+    On Error GoTo Error_AcruparConceptos
+    For i = 1 To Me.LineasDetalle_
+        If i > Me.LineasDetalle_ Then GoTo Fin
+        Me.AgrupaConceptosDetalle_solo_down i
+    Next i
+Fin:
+    Me.SalveTique True
+    Me.CargaTiqueTPV
+Salir_AcruparConceptos:
+    Exit Sub
+Error_AcruparConceptos:
+    Select Case Err
+        Case Else
+            MBox "Error nº " & Err & " en AcruparConceptos" & vbCrLf & Err.Description
+            Resume Salir_AcruparConceptos
+    End Select
+
+End Sub
+
+Public Sub EnviarComanda(Optional intLlamaSalveTique As Integer = False)
+    On Error GoTo Error_EnviarComanda
+    Dim intOP As Integer
+    If Not intLlamaSalveTique Then
+        If Not Me.SalveTique(True) Then GoTo Salir_EnviarComanda
+    End If
+    Me.AgruparConceptos
+    If Me.UltimaComandaNum_ > 0 Then
+        If Nz(DameValorParam("ComandasOpcionesAlEnvioSN"), True) = True Then
+            intOP = Nz(SeleccionDe("CO", "Comanda", "Comanda", 1), 1)
+        Else
+            intOP = 1
+        End If
+    Else
+        intOP = 1
+    End If
+    Dim lngIdDestino As Long, strSQL As String
+    
+    If Nz(DameValorParam("ComandaPreguntarDestinoSN"), False) = True Then
+        strSQL = "SELECT DISTINCT tbTickDet.Iddestino, Destino"
+        strSQL = strSQL & " FROM tbTickDet INNER JOIN tbCom_Destinos ON tbTickDet.Iddestino=tbCom_Destinos.IdDestino"
+        strSQL = strSQL & " WHERE IdTickCab = " & Me.IdTickCab_
+        strSQL = strSQL & " AND tbTickDet.Iddestino>0 "
+        If intOP = 1 Then strSQL = strSQL & " AND EnComanda=0"
+        CurrentDb.Execute "UPDATE sysBusquedas SET strsql = " & ConComillas(strSQL) & " WHERE CodBusqueda = 'DEST1'", dbFailOnError
+        lngIdDestino = Nz(BuscaAyuda("DEST1", , 2, , , , True), -1)
+        If lngIdDestino = -1 Then Exit Sub
+    End If
+        
+    Select Case intOP
+        Case 1
+            intOP = GenerarComanda(Me.IdTickCab_, False, , lngIdDestino)
+        Case 2
+            intOP = GenerarComanda(Me.IdTickCab_, True, , lngIdDestino)
+        Case 3
+            intOP = True
+            
+    End Select
+    If intOP = True Then 'ImprimirComanda glngIdTickCab
+        PrintComanda Me.IdTickCab_, , lngIdDestino, , Me.ComandaPorImpresoraS_
+    End If
+    Me.UltimaComandaNum_ = Nz(DMax("NumComanda", "tbComandas", "IdTickCab = " & Me.IdTickCab_), 0)
+
+Salir_EnviarComanda:
+    Exit Sub
+Error_EnviarComanda:
+    Select Case Err
+        Case Else
+            MBox "error nº " & Err & " en EnviarComanda" & vbCrLf & Err.Description
+            Resume Salir_EnviarComanda
+    End Select
+
+End Sub
+
+Public Sub A_Factura(Optional Shift As Integer = 0)
+    On Error GoTo Error_A_Factura
+    Dim intOP As Integer, strCodCliente  As String, lngIdFactura As Long, strSQL As String
+    Dim strPdfFac As String, strMensaje As String, dtIni As Date, lS As Long, strR As String, strEmail As String
+    Dim strNumFac As String, intR As Integer
+    If Me.IdFactura_ > 0 Then ' La Factura ya ha sido generada
+        If Nz(DameValorParam("FacturasImprimirRapido"), True) = True Then
+            intOP = 1
+            'v2 = "ImprimirFactura"
+        Else
+            strSQL = "UPDATE sysSeleccionesVarias SET Visible = (ValorOpcion = -1 OR ValorOpcion = 1 OR ValorOpcion = 2 OR ValorOpcion = 3 OR ValorOpcion = 6)"
+            strSQL = strSQL & " WHERE CodSeleccion = 'AF'"
+            CurrentDb.Execute strSQL, dbFailOnError
+            intOP = Nz(SeleccionDe("AF", "Seleccione opción", "Factura de tique", Nz(DameValorParam("TiqueAFacturaOpcion"), 1)), 0)
+            If intOP = 0 Then GoTo Salir_A_Factura
+            PonValorParam "TiqueAFacturaOpcion", intOP, 4
+        End If
+        Me.Impreso_ = True
+        Select Case intOP
+            Case -1
+                'strSQL = "UPDATE tbTickCab SET IdFactura = -1 WHERE IdTickCab = " & me.IdTickCab_
+                'CurrentDb.Execute strSQL, dbFailOnError
+                Me.IdFactura_ = -1
+            Case 1 '"ImprimirFactura"
+                'ImprimirFactura Nz(DLookup("IdFactura", "tbTickCab", "IdTickCab = " & me.IdTickCab_), 0), (Shift And acCtrlMask) > 0
+                ImprimirFactura Me.IdFactura_, (Shift And acCtrlMask) > 0
+            Case 2 '"IrAFactura"
+                DoCmd.OpenForm "frmFacturas", , , "IdFactura = " & Me.IdFactura_
+                GoTo Salir_A_Factura
+            Case 3 '"AsignarAFactura"
+                strSQL = "SELECT tbFacturasCab.IdFactura, [Serie] & [NumeroDeFactura] AS [Nº Factura], tbFacturasCab.DireccionCliente AS Cliente"
+                strSQL = strSQL & " FROM tbFacturasCab"
+                'lngIdCliente = Me.IdCliente_
+                'lngIdCliente = Nz(DLookup("IdCliente", "tbTickCab_Cli", "IdTickCab = " & me.IdTickCab_), 0)
+                'If lngIdCliente = 0 Then
+                '    strSQL = strSQL & " WHERE IsNull(tbFacturasCab.IdCliente);"
+                'Else
+                '    strSQL = strSQL & " WHERE (((tbFacturasCab.IdCliente)=" & lngIdCliente & "));"
+                'End If
+                strCodCliente = Nz(DLookup("CodCliente", "tbClientes", "IdCliente = " & Me.IdCliente_), "")
+                If strCodCliente = "" Then
+                    strSQL = strSQL & " WHERE IsNull(tbFacturasCab.CodCliente);"
+                Else
+                    strSQL = strSQL & " WHERE (((tbFacturasCab.CodCliente)=" & ConComillas(strCodCliente) & "));"
+                End If
+                lngIdFactura = Nz(SeleccionaDe(strSQL, "Seleccione Factura para asignar el ticket", 3, "0cm; 2cm; 6cm", 1, 10 * TC_CmToPoints), 0)
+                If lngIdFactura <> 0 Then
+                    Me.IdFactura_ = lngIdFactura
+                End If
+            Case 6 'Factura x Email
+                strNumFac = Nz(DLookup("NumeroDeFactura", "tbFacturasCab", "IdFactura = " & Me.IdFactura_), "")
+                strPdfFac = DirectorioDe(CurrentDb.Name) & "Facs\Factura_" & SoloNum(strNumFac) & ".pdf"
+                If Dir(strPdfFac) <> "" Then
+                    intR = MBox("¿Volver a generar PDF de la factura?" & vbCrLf & "Si se indica que no, se enviará el PDF existente", vbYesNoCancel + vbQuestion)
+                    If intR = vbCancel Then Exit Sub
+                    If intR = vbYes Then strPdfFac = ""
+                Else
+                    strPdfFac = ""
+                End If
+                If strPdfFac = "" Then ImprimirFactura Me.IdFactura_, , , True, strPdfFac, , False
+                dtIni = Now
+                While Dir(strPdfFac) = "" And lS < 30
+                    DoEvents
+                    lS = DateDiff("s", Now, dtIni)
+                    SysCmd acSysCmdSetStatus, lS
+                Wend
+                If Dir(strPdfFac) <> "" Then
+                    EnviarFacturaXEmail Me.IdFactura_, True
+                Else
+                    MBox "No se encontró la factura para el envío por email", vbExclamation
+                    'GoTo Salir_A_Factura
+                End If
+                    
+                    
+        End Select
+    Else
+        If Nz(DameValorParam("Tiques_AlFacturar_IVAnoIncluido"), False) = True Then
+            Me.IVAincSN_ = False
+            Me.PonTotalesTique
+            Me.SalveTique
+            'PonTiqueIVAinc False
+        End If
+        If Nz(DameValorParam("FacturasNoGenerarSN"), False) = True Then
+            If Nz(DameValorParam("ImpresionInformes"), 2) = 1 Then
+                DoCmd.OpenReport Nz(DameValorParam("FacturasRPT"), "rptFacturaTiqueA4_Esp"), , , "IdTickCab = " & Me.IdTickCab_
+            Else
+                DoCmd.OpenReport Nz(DameValorParam("FacturasRPT"), "rptFacturaTiqueA4_Esp"), acViewPreview, , "IdTickCab = " & Me.IdTickCab_
+            End If
+            GoTo Salir_A_Factura
+        End If
+        If Nz(DameValorParam("FacturasImprimirRapido"), True) = True Then
+            intOP = 4 '"FacturarEImprimir"
+        Else
+            strSQL = "UPDATE sysSeleccionesVarias SET Visible = (ValorOpcion = -1 OR ValorOpcion = 3 OR ValorOpcion = 4 OR ValorOpcion = 5 OR ValorOpcion = 6)"
+            strSQL = strSQL & " WHERE CodSeleccion = 'AF'"
+            CurrentDb.Execute strSQL, dbFailOnError
+            intOP = Nz(SeleccionDe("AF", "Seleccione opción", "Factura de tique", Nz(DameValorParam("TiqueAFacturaOpcion"), 1)), 0)
+            If intOP = 0 Then GoTo Salir_A_Factura
+            PonValorParam "TiqueAFacturaOpcion", intOP, 4
+        End If
+        ' marcar ticket como impreso
+        'CurrentDb.Execute "UPDATE tbTickCab SET Impreso = True WHERE IdTickCab = " & Me.lblNumTicket.Tag, dbFailOnError
+        Me.Impreso_ = True
+        Select Case intOP
+            Case -1, 5 '-1: Pendiente de facturar, 5: No factura
+                Me.IdFactura_ = IIf(intOP = 5, 0, intOP)
+            Case 4 ' "FacturarEImprimir" ' facturar ticke, e imprimir
+                lngIdFactura = FacturarTicket(Me.IdTickCab_, , , , , Me.DbName_)
+                If lngIdFactura <> 0 Then
+                    Me.IdFactura_ = lngIdFactura
+                    ImprimirFactura lngIdFactura, (Shift And acCtrlMask) > 0
+                End If
+            Case 3 ' "AsignarAFactura"
+                strSQL = "SELECT tbFacturasCab.IdFactura, [Serie] & [NumeroDeFactura] AS [Nº Factura], tbFacturasCab.DireccionCliente AS Cliente"
+                strSQL = strSQL & " FROM tbFacturasCab"
+                strCodCliente = Nz(DLookup("CodCliente", "tbClientes", "IdCliente = " & Me.IdCliente_), "")
+                If strCodCliente = "" Then
+                    strSQL = strSQL & " WHERE IsNull(tbFacturasCab.CodCliente);"
+                Else
+                    strSQL = strSQL & " WHERE (((tbFacturasCab.CodCliente)=" & ConComillas(strCodCliente) & "));"
+                End If
+                lngIdFactura = Nz(SeleccionaDe(strSQL, "Seleccione Factura para asignar el ticket", 3, "0cm; 2cm; 6cm", 1, 10 * TC_CmToPoints), 0)
+                If lngIdFactura <> 0 Then
+                    Me.IdFactura_ = lngIdFactura
+                End If
+            'Case "FacturarEImprimir"
+            '    FacturarTicket me.IdTickCab_
+            '    ImprimirFactura Nz(DLookup("IdFactura", "tbTickCab", "IdTickCab = " & me.IdTickCab_), 0)
+            Case 6 'Factura x Email
+                lngIdFactura = FacturarTicket(Me.IdTickCab_, , , , , Me.DbName_)
+                If lngIdFactura = 0 Then
+                    MBox "No se generó factura", vbExclamation
+                    GoTo Salir_A_Factura
+                End If
+                Me.IdFactura_ = lngIdFactura
+                EnviarFacturaXEmail Me.IdFactura_, True
+            
+          End Select
+    End If
+    'Si_Si_aPendienteProcesar "T", me.IdTickCab_
+    Me.SalveTique
+    Me.CargaTiqueTPV
+    
+Salir_A_Factura:
+    Exit Sub
+Error_A_Factura:
+    Select Case Err
+        Case Else
+            MBox "Error nº " & Err & " en A_Factura" & vbCrLf & Err.Description
+            Resume Salir_A_Factura
+    End Select
+End Sub
+
+Private Function DimeCabCli(lngIdCli As Long, Optional ByRef strNIF As String) As String
+    On Error GoTo Error_DimeCabCli
+    Dim strCabe As String
+    strCabe = Trim(DLookup("[NombreCli] & ' ' & [ApellidosCli]", "tbClientes", "IdCliente = " & lngIdCli)) & vbCrLf _
+                        & DLookup("Direccion", "tbClientes", "IdCliente = " & lngIdCli) & vbCrLf _
+                        & Trim(DLookup("CodPostal", "tbClientes", "IdCliente = " & lngIdCli) & " " & DLookup("Ciudad", "tbClientes", "IdCliente = " & lngIdCli)) & " " _
+                        & "(" & DLookup("EdoOProv", "tbClientes", "IdCliente = " & lngIdCli) & ")"
+    If right(strCabe, 2) = "()" Then strCabe = Trim(RecDerTop(strCabe, 2, 0))
+    DimeCabCli = strCabe
+    strNIF = Nz(DLookup("NIF", "tbClientes", "IdCliente = " & lngIdCli), "")
+Salir_DimeCabCli:
+    Exit Function
+Error_DimeCabCli:
+    Select Case Err
+        Case Else
+            MBox "error nº " & Err & " en DimeCabCli" & vbCrLf & Err.Description
+            Resume Salir_DimeCabCli
+    End Select
+End Function
+
+Private Sub CambiaEstadoTiqueIdArtV(lngIdArtV As Long)
+    Dim strEstadoTique As String, lngCodEstado As Long
+    On Error GoTo HandleError
+    strEstadoTique = Nz(DLookup("ArticuloVenta", "tbArtV", "IdArtV = " & lngIdArtV), "")
+    lngCodEstado = Nz(DLookup("CodEstado", "tbEstadosTique", "EstadoTique = " & ConComillas(strEstadoTique)), 0)
+    Me.CodEstadoT_ = lngCodEstado
+    CargaTiqueTPV
+HandleExit:
+    Exit Sub
+HandleError:
+    MBox Err.Description
+    Resume HandleExit
+End Sub
+
+
+Public Function ModifLuTaCa(intLuTaCa As Integer, iShift As Integer, Optional intCargaTPV As Integer = True)
+    On Error GoTo Error_ModifLuTaCa
+    Dim v As Variant, strSQL As String, v2 As Variant
+    Dim lngIdLugar As Long, lngIdLugar2 As Long
+    Dim lngIdTrf  As Long, lngIdTrf2 As Long
+    Dim intR As Integer, lngIdCliente As Long, lngIdFactura As Long, strCodCliente As String
+    Dim intAdultos As Integer, intNiños As Integer, strTit As String
+    Dim rs As Recordset
+    Dim strNum As String, lngIdTickCab_old As Long, lngCodTipTick As Long
+    If IsOpenForm("frmTPV") Then Forms("frmTPV").gintCrono = False
+    If Not Me.IsLoaded_ Then GoTo Salir_ModifLuTaCa
+    'If Me.btnBorrarLin.Enabled = False And intLuTaCa <> 4 Then GoTo Salir_ModifLuTaCa
+    If Me.SalveTique = False Then
+        MBox "No se pudo grabar tique", vbExclamation
+        GoTo Salir_ModifLuTaCa
+    End If
+    Select Case intLuTaCa
+        Case 1 ' Seleccionar mesa
+            Dim strXML As String, strTag As String
+            PonXML strXML, "IdEspScr", 0
+            DoCmd.OpenForm "frmSelectLugar", , , , , acDialog, strXML
+            If Not IsOpenForm("frmSelectLugar") Then GoTo Salir_ModifLuTaCa
+            strTag = Forms("frmSelectLugar")("lblResult").Tag
+            DoCmd.Close acForm, "frmSelectLugar"
+            Select Case Left(strTag, 1)
+                Case "T"
+                    'qwerty
+                    intR = MBox("¿Traspasar tique actual al tique de la mesa seleccionada?", vbOKCancel + vbQuestion)
+                    If intR = vbCancel Then GoTo Salir_ModifLuTaCa
+                    TraspasarTiqueNEW Me.IdTickCab_, CLng(Mid(strTag, 2))
+                    Me.LoadIdTickCab CLng(Mid(strTag, 2))
+                    Me.CargaTiqueTPV
+                    'CargaTicket CLng(Mid(strTag, 2))
+                Case "L"
+                    Me.IdLugar_ = CLng(Mid(strTag, 2))
+                    lngIdLugar2 = CLng(Mid(strTag, 2))
+                    'comprobar tarifa
+                    lngIdTrf = Me.IdTarifa_
+                    lngIdTrf2 = DLookup("IdTrf", "tbEspa_Lugares", "IdLugar = " & lngIdLugar2)
+                    If lngIdTrf <> lngIdTrf2 Then
+                        intR = MBox("¿Modificar tarifa del ticket a " & DLookup("TipoTarifa", "tbTipTrf", "IdTrf = " & lngIdTrf2) & "?", vbQuestion + vbYesNo)
+                        If intR = vbYes Then
+                            'modificar tarifa
+                            Me.IdTarifa_ = lngIdTrf2
+                            If Nz(DameValorParam("TicketsDetalleIVAIncluidoSNT"), 0) = 3 Then
+                                If Nz(DLookup("IvaIncluidoSN", "tbTipTrf", "IdTrf = " & lngIdTrf2), True) = True Then
+                                    Me.IVAincSN_ = True
+                                Else
+                                    Me.IVAincSN_ = False
+                                End If
+                            End If
+                            If False Then ' no se cambian los precios automaticamente...
+                                Me.PonPrecioDetalle 0
+                                Me.PonTotalesTique
+                            End If
+                        End If
+                    End If
+                    Me.CargaTiqueTPV
+                    If Me.IdFactura_ <> 0 Then
+                        strSQL = "UPDATE tbFacturasCab SET Mesa = '" & Me.Mesa_ & "' WHERE IdFactura = " & Me.IdFactura_
+                        CurrentDb.Execute strSQL, dbFailOnError
+                    End If
+                    'CargaTicket
+                    'NuevoTicket CLng(Mid(strTag, 2))
+            End Select
+        Case 2 'Seleccionar tarifa
+            AbreBox "006"
+            If Not IsOpenForm("frm_BotonBox") Then GoTo Salir_ModifLuTaCa
+            v = Forms("frm_BotonBox")("lblResult").Caption
+            DoCmd.Close acForm, "frm_BotonBox"
+            'modificar tarifa e iva incluido en detalle tal vez
+            Me.IdTarifa_ = v
+            If Nz(DameValorParam("TicketsDetalleIVAIncluidoSNT"), 0) = 3 Then
+                If Nz(DLookup("IvaIncluidoSN", "tbTipTrf", "IdTrf = " & v), True) = True Then
+                    Me.IVAincSN_ = True
+                Else
+                    Me.IVAincSN_ = False
+                End If
+            End If
+            Me.PonPrecioDetalle 0
+            Me.PonTotalesTique
+            If intCargaTPV Then Me.CargaTiqueTPV
+        Case 3 ' Seleccionar camarera/o
+SelectBarm:
+            v = Nz(BuscaAyuda("BR6", Me.IdBarm_, 2, True), 0)
+            If v = 0 Then GoTo Salir_ModifLuTaCa
+            If v = -1 Then ' Activar empleado/a
+                If gm_Presencia Then
+                    DoCmd.OpenForm "frmRegistroPresencia"
+                    GoTo Salir_ModifLuTaCa
+                End If
+                DoCmd.OpenForm "frmModiBarmActi", , , , , acDialog
+                GoTo SelectBarm
+            End If
+            'AbreBox "002"
+            'If Not IsOpenForm("frm_BotonBox") Then GoTo Salir_ModifLuTaCa
+            'v = Forms("frm_BotonBox")("lblResult").Caption
+            'DoCmd.Close acForm, "frm_BotonBox"
+            'If v = "camar_on-off" Then
+            '    If gm_Presencia Then
+            '        DoCmd.OpenForm "frmRegistroPresencia"
+            '        GoTo Salir_ModifLuTaCa
+            '    End If
+            '    DoCmd.OpenForm "frmModiBarmActi", , , , , acDialog
+            '    GoTo IniBox002
+            'End If
+            'If Not IsNumeric(v) Then GoTo Salir_ModifLuTaCa
+            Me.IdBarm_ = v
+            lngIdTrf = Nz(DLookup("IdTrf", "tbBarm", "IdBarm=" & Me.IdBarm_), 0)
+            If lngIdTrf <> 0 And Me.IdTarifa_ <> lngIdTrf Then
+                Me.IdTarifa_ = lngIdTrf
+                Me.PonPrecioDetalle 0
+                Me.PonTotalesTique
+            End If
+            If intCargaTPV Then Me.CargaTiqueTPV
+        Case 4 'Factura...
+'IniBox002:
+''''''''''''''''''''''''''''''''CRONO
+'            gintCrono = False
+            If IsOpenForm("frmBusyBox") Then DoCmd.Close acForm, "frmBusyBox"
+            Me.A_Factura (iShift)
+''''''''''''''''''''''''''''''''CRONO
+'            gintCrono = gintCerrarSegundos > 0
+'            Me.Crono_ = gintCerrarSegundos
+            Me.LoadIdTickCab Me.IdTickCab_
+            If intCargaTPV Then Me.CargaTiqueTPV
+        Case 5 ' Comensales
+            intAdultos = Me.Comensales_ ' Nz(DLookup("Adultos", "tbTickCab", "IdTickCab = " & glngIdTickCab), 0)
+            strTit = "Introduzca Nº de Comensales"
+            PonXML strXML, "Titulo", strTit
+            PonXML strXML, "Display", intAdultos
+            DoCmd.OpenForm "frmTecladoN", , , , , acDialog, strXML
+            If Not IsOpenForm("frmTecladoN") Then GoTo Salir_ModifLuTaCa
+            strTit = Nz(Forms("frmTecladoN")("txtDisplay"), "")
+            DoCmd.Close acForm, "frmTecladoN"
+            If Not IsNumeric(strTit) Then GoTo Salir_ModifLuTaCa
+            intAdultos = CInt(strTit)
+            Me.Comensales_ = intAdultos
+            If intCargaTPV Then Me.CargaTiqueTPV
+        Case 6 ' Tipo de Tique
+            AbreBox "009"
+            If Not IsOpenForm("frm_BotonBox") Then GoTo Salir_ModifLuTaCa
+            v = Forms("frm_BotonBox")("lblResult").Caption
+            DoCmd.Close acForm, "frm_BotonBox"
+            If Not IsNumeric(v) Then GoTo Salir_ModifLuTaCa
+            Me.CodTipTick_ = v
+            If Nz(DLookup("Precios0", "tbTipTick", "CodTipTick = " & v), False) = True Then
+                Me.PonPrecioDetalle 0, 0
+                Me.PonTotalesTique
+            End If
+            If Nz(DLookup("CerrarTique", "tbTipTick", "CodTipTick = " & v), False) = True Then
+                If IsOpenForm("frmTPV") Then Call Forms("frmTPV").btnCerrarTicket_Click
+            Else
+                If intCargaTPV Then Call Me.CargaTiqueTPV
+            End If
+        Case 7 'Estado Tique
+            Dim intET As Integer
+            intET = Nz(BuscaAyuda("ET0", Me.CodEstadoT_, 2), 0)
+            If intET = 0 Then GoTo Salir_ModifLuTaCa
+            Me.CodEstadoT_ = intET
+            FechaFin = Now()
+
+            If intCargaTPV Then
+                CargaTiqueTPV
+            Else
+                SalveTique
+            End If
+    End Select
+Salir_ModifLuTaCa:
+    If IsOpenForm("frmTPV") Then
+        Forms("frmTPV").gintCrono = False
+        Forms("frmTPV").gintCrono = Forms("frmTPV").gintCerrarSegundos > 0
+    End If
+    Exit Function
+Error_ModifLuTaCa:
+    Select Case Err
+        Case Else
+            MBox "Error nº " & Err & " en ModifLuTaCa" & vbCrLf & Err.Description
+            Resume Salir_ModifLuTaCa
+    End Select
+End Function
+
+
+Sub RecargaTPV_Detalle(Optional intVerCeros As Integer = False)
+    On Error GoTo HandleError
+    Dim strRow As String, frm As Form, i As Integer
+    Set frm = Forms("frmTPV")
+    strRow = ""
+    'PendienteEnviarComanda = False
+    'Ver Ceros....
+    If intVerCeros Then
+        For i = 1 To UBound(Detalle)
+            'If Not Detalle(i).Borrar Then
+            strRow = strRow & Detalle(i).RowSource
+            'PendienteEnviarComanda = PendienteEnviarComanda Or (Detalle(i).EnviarComanda And Detalle(i).EnComanda = 0)
+        Next i
+    Else
+        For i = 1 To UBound(Detalle)
+            If Cantidad_(i) * Precio_(i) <> 0 Then strRow = strRow & Detalle(i).RowSource
+            'PendienteEnviarComanda = PendienteEnviarComanda Or (Detalle(i).EnviarComanda And Detalle(i).EnComanda = 0)
+        Next i
+    End If
+    If frm.btnVerCeros.Visible Then
+        frm.btnVerCeros.Tag = IIf(intVerCeros, "S", "N")
+        frm.btnVerCeros.Caption = "0s---" & IIf(intVerCeros, "S/n", "s/N")
+    End If
+    frm.lstDetalle.BackColor = IIf(Impreso, C_Rojo, IIf(PendienteEnviarComanda, C_Amarillo, vbWhite))
+    frm.lstDetalle.RowSource = strRow
+    frm.lstDetalle.Visible = True
+HandleExit:
+    Exit Sub
+HandleError:
+    MBox Err.Description
+    Resume HandleExit
+End Sub

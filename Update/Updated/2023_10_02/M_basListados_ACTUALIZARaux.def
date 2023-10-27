@@ -1,0 +1,798 @@
+Attribute VB_Name = "basListados_ACTUALIZARaux"
+Option Compare Database
+Option Explicit
+
+Global gintActualizar_auxRegistroVentas As Integer
+Global gintActualizar_auxRegistroTiques As Integer
+
+Public Sub ACTUALIZAR_auxRegistroVentas(dtD As Date, dtH As Date, Optional strHoraDesde As String = "00:00" _
+                                                                , Optional strHoraHasta As String = "23:59" _
+                                                                , Optional lngIdPuesto As Long = 0 _
+                                                                , Optional lngIdBarm As Long = 0 _
+                                                                , Optional lngCodTipTick As Long = -99 _
+                                                                , Optional strCli As String = "" _
+                                                                , Optional strTSFA As String = "T" _
+                                                                , Optional lngIdSFA As Long = 0 _
+                                                                , Optional strDiasSemana As String = "" _
+                                                                , Optional strGrupoBarm As String = "" _
+                                                                , Optional intInvitacionesSN As Integer = False)
+    
+    Dim i As Integer, intPas As Integer
+    Dim rs As Recordset, rsAux As Recordset, rsFP As Recordset, rsAuxFP As Recordset, rsFi As Recordset
+    Dim strSQL As String, strSQL0 As String, strSQL1 As String, strSQL2 As String, strSQL3 As String, lngL As Long
+    Dim lngComensales As Long
+    Dim db As Database, intR As Integer, rsPu As Recordset, intHA As Integer, strMDB As String, strMsg As String
+    On Error GoTo Error_ACTUALIZAR_auxRegistroVentas
+    'strSQL = "DELETE * FROM auxRegistroVentas"
+    'CurrentDb.Execute strSQL, dbFailOnError
+    'strSQL = "DELETE * FROM auxRegistroVentas_Comensales"
+    'CurrentDb.Execute strSQL, dbFailOnError
+    'strSQL = "DELETE * FROM auxRegistroVentas_FormasPago"
+    'CurrentDb.Execute strSQL, dbFailOnError
+    strSQL = "SELECT CLng(tbTickCab.IdTickCab) As AutoNum, CLng(Nz(tbTickDet.IdTickDet,0)) AS Linea, tbTickCab.Serie,  Format(tbTickCab.NumTicket,'00000') AS NumFactura, tbTickCab.IdPuesto, tbTickCab.Fecha, tbTickCab.Hora, [Adultos]+[Niños] AS Comensales, CLng(Nz(tbArtV.IdArtV,0)) AS IdArticulo, CLng(Nz(tbFam_Art.IdFamilia,0)) AS IdFamilia, CLng(Nz(tbSec_Art.IdSeccion,0)) AS IdSeccion, tbTickCab.IvaInc_Det, tbTickDet.Cantidad, tbTickCab.CodTipTick, tbTickCab.IdBarm,"
+    If DameValorParam("ListadoVentasConceptoSegun") = 1 Then
+        strSQL = strSQL & " tbTickDet.Concepto,"
+    Else
+        strSQL = strSQL & " tbArtV.ArticuloVenta as Concepto,"
+    End If
+    strSQL = strSQL & " Iif(IvaInc_Det=True,tbTickDet.Precio, tbTickDet.Precio*(1+tbTickDet.IVA)) AS Precio, "
+    strSQL = strSQL & " Iif(IvaInc_Det=True,tbTickDet.Precio*tbTickDet.Cantidad/(1+tbTickDet.IVA), tbTickDet.Precio*tbTickDet.Cantidad) AS Base, "
+    strSQL = strSQL & " Iif(IvaInc_Det=True,tbTickDet.Precio*tbTickDet.Cantidad, tbTickDet.Precio*tbTickDet.Cantidad*(1+tbTickDet.IVA)) AS Importe, "
+    strSQL = strSQL & " tbTickDet.IVA, Nz(tbTickCab_Cli.NIF,'-') AS NIF, Left(Nz(tbTickCab_Cli.CabeceraTicket,'-'),50) AS Cliente, "
+    strSQL = strSQL & " Iif(IVA=0,True,False) AS IvaCeroSN"
+    'strSQL = strSQL & ", tbTickDet.InvitacionSN"
+    strSQL = strSQL & ", False as InvitacionSN"
+    strSQL = strSQL & ",DiaD(tbTickCab.Fecha) as DiaD, Format(Hora,'HH:NN') as HoraH, 'Otros' as TramoDH"
+    'strSQL = strSQL & " FROM (((tbTipTick RIGHT JOIN tbTickCab ON tbTipTick.CodTipTick = tbTickCab.CodTipTick) LEFT JOIN tbTickCab_Cli ON tbTickCab.IdTickCab = tbTickCab_Cli.IdTickCab) INNER JOIN (tbSec_Art RIGHT JOIN (tbFam_Art RIGHT JOIN (tbArtV RIGHT JOIN tbTickDet ON tbArtV.IdArtV = tbTickDet.IdArtV) ON tbFam_Art.IdFamilia = tbArtV.IdFamilia) ON tbSec_Art.IdSeccion = tbFam_Art.IdSeccion) ON tbTickCab.IdTickCab = tbTickDet.IdTickCab) LEFT JOIN cfgPuestos ON tbTickCab.IdPuesto = cfgPuestos.IdPuesto"
+    strSQL0 = strSQL
+    
+    strSQL = ""
+    strSQL = strSQL & " FROM ((((tbTipTick RIGHT JOIN tbTickCab ON tbTipTick.CodTipTick = tbTickCab.CodTipTick) LEFT JOIN cfgPuestos ON tbTickCab.IdPuesto = cfgPuestos.IdPuesto) LEFT JOIN tbTickCab_Cli ON tbTickCab.IdTickCab = tbTickCab_Cli.IdTickCab) LEFT JOIN (tbSec_Art RIGHT JOIN (tbFam_Art RIGHT JOIN (tbArtV RIGHT JOIN tbTickDet ON tbArtV.IdArtV = tbTickDet.IdArtV) ON tbFam_Art.IdFamilia = tbArtV.IdFamilia) ON tbSec_Art.IdSeccion = tbFam_Art.IdSeccion) ON tbTickCab.IdTickCab = tbTickDet.IdTickCab)"
+    If strGrupoBarm <> "" Then
+        strSQL = strSQL & " LEFT JOIN tbBarm ON tbTickCab.IdBarm = tbBarm.IdBarm"
+    End If
+    strSQL = strSQL & " WHERE tbTickCab.Fecha Between #" & Format(dtD, "mm/dd/yyyy") & "# And #" & Format(dtH, "mm/dd/yyyy") & "#"
+    strSQL = strSQL & " AND Format(tbTickCab.Hora,'HH:NN')>='" & strHoraDesde & "'"
+    strSQL = strSQL & " AND Format(tbTickCab.Hora,'HH:NN')<='" & strHoraHasta & "'"
+    If lngIdPuesto <> 0 Then
+        strSQL = strSQL & " AND tbTickCab.IdPuesto = " & lngIdPuesto
+    End If
+    If lngIdBarm <> 0 Then
+        strSQL = strSQL & " AND tbTickCab.IdBarm = " & lngIdBarm
+    End If
+    If strGrupoBarm <> "" Then
+        strSQL = strSQL & " AND tbBarm.Grupo = " & ConComillas(strGrupoBarm)
+    End If
+    If lngCodTipTick = -99 Then
+        strSQL = strSQL & " AND tbTipTick.IncluirEnZ =True"
+    ElseIf lngCodTipTick <> -100 Then
+        strSQL = strSQL & " AND tbTickCab.CodTipTick = " & lngCodTipTick
+    End If
+    If Len(strCli) > 0 Then
+        strSQL = strSQL & " AND CabeceraTicket  Like " & ConComillas("*" & strCli & "*")
+    End If
+    If lngIdSFA <> 0 Then
+        Select Case strTSFA
+            Case "T"
+            Case "S"
+                strSQL = strSQL & " AND tbSec_Art.IdSeccion = " & lngIdSFA
+            Case "F"
+                strSQL = strSQL & " AND tbFam_Art.IdFamilia= " & lngIdSFA
+            Case "A"
+                strSQL = strSQL & " AND tbTickDet.IdArtV = " & lngIdSFA
+        End Select
+    End If
+    If strDiasSemana <> "" Then
+        strSQL = strSQL & " AND InStr(" & ConComillas(strDiasSemana) & ",DiaD(tbTickCab.Fecha))>0"
+    End If
+    If intInvitacionesSN = True Then
+        strSQL = strSQL & " AND tbTickDet.InvitacionSN=True"
+    End If
+    strSQL = strSQL & " ORDER BY tbTickCab.Serie, tbTickCab.NumTicket, tbTickDet.IdTickDet"
+    strSQL1 = strSQL
+    'OJO OJO OJO Cambio leer la forma de pago desde el tique en llugar de desde cajadet
+    'strSQL = "SELECT Nz(tbTickCab.IdTickCab,0) AS IdT, tbCajaDet.CodFPago, tbFPago.Descripcion as FormaPago, tbCajaDet.Cantidad as Importe, Int(tbCajaDet.Fecha) AS Fecha, tbCajaCab.IdPuesto"
+    strSQL = "SELECT Nz(tbTickCab.IdTickCab,0) AS IdT, tbTickCab.TotalPagado as Importe, tbTickCab.FormaPagado as FormaPago, Int(tbTickCab.Fecha) AS Fecha, tbTickCab.IdPuesto"
+    
+    strSQL2 = strSQL
+    strSQL = ""
+    'strSQL = strSQL & " FROM tbFPago INNER JOIN (tbCajaCab INNER JOIN (tbTickCab RIGHT JOIN tbCajaDet ON tbTickCab.IdTickCab = tbCajaDet.IdFrom) ON tbCajaCab.IdCajaCab = tbCajaDet.IdCajaCab) ON tbFPago.CodFPago = tbCajaDet.CodFPago"
+    strSQL = strSQL & " FROM tbTickCab"
+    'strSQL = strSQL & " WHERE tbCajaDet.Fecha Between " & CLng(dtD) - 1 & " And " & CLng(dtH) + 2
+    strSQL = strSQL & " WHERE tbTickCab.Fecha Between " & CLng(dtD) & " And " & CLng(dtH)
+    'strSQL = strSQL & " AND tbCajaDet.Origen='T'"
+    strSQL = strSQL & " ORDER BY tbTickCab.IdTickCab;"
+    strSQL3 = strSQL
+    
+    Dim strNumFac As String, intLin As Integer, dtFec As Date, strNIF As String
+    Dim curTotal As Currency, intPrimera As Integer, strAux As String
+    strAux = DirectorioDe(CurrentDb.Name) & "R4AUX.mdb"
+
+    'Rellenar auxFiles
+    
+    
+    'CurrentDb.Execute "DELETE * FROM auxFiles", dbFailOnError
+    'strSQL = "SELECT IdPuesto, CarpetaBase FROM cfgPuestos"
+    'If lngIdPuesto = 0 Then
+    '    strSQL = strSQL & " WHERE EnUso"
+    'Else
+    '    strSQL = strSQL & " WHERE IdPuesto = " & lngIdPuesto
+    'End If
+    'Set rsPu = CurrentDb.OpenRecordset(strSQL, dbOpenSnapshot)
+    'While Not rsPu.EOF
+        'Pon_auxFiles_Historicos CDate(dtD), CDate(dtH), rsPu("IdPuesto"), , False, CDate(dtH) >= Date
+    Pon_auxFiles_Historicos CDate(dtD), CDate(dtH), lngIdPuesto, , , CDate(dtH) >= Date, True
+    '    rsPu.MoveNext
+    'Wend
+    intPrimera = True
+    Set rsFi = CurrentDb.OpenRecordset("SELECT * FROM auxFiles ORDER By Orden")
+    While Not rsFi.EOF
+        strMDB = rsFi("strMdb")
+        SysCmd acSysCmdSetStatus, "Leyendo fichero histórico: " & strMDB
+        Set db = OpenDatabase(strMDB)
+        EliminarTabla strMDB, "auxRegistroVentas"
+        db.Execute strSQL0 & " INTO auxRegistroVentas IN '" & strMDB & "' " & strSQL1, dbFailOnError
+        VincularNuevaTabla strMDB, "auxRegistroVentas", "auxRegistroVentas__"
+        If intPrimera Then
+            EliminarTabla strAux, "auxRegistroVentas"
+            strSQL = "SELECT *, '" & strMDB & "' AS FileMDB INTO auxRegistroVentas IN '" & strAux & "' FROM auxRegistroVentas__"
+        Else
+            strSQL = "INSERT INTO auxRegistroVentas SELECT  * , '" & strMDB & "' AS FileMDB FROM auxRegistroVentas__"
+        End If
+        CurrentDb.Execute strSQL, dbFailOnError
+        
+        EliminarTabla strMDB, "auxRegistroVentas_FormasPago"
+        db.Execute strSQL2 & " INTO auxRegistroVentas_FormasPago IN '" & strMDB & "' " & strSQL3, dbFailOnError
+        VincularNuevaTabla strMDB, "auxRegistroVentas_FormasPago", "auxRegistroVentas_FormasPago__"
+        If intPrimera Then
+            EliminarTabla strAux, "auxRegistroVentas_FormasPago"
+            strSQL = "SELECT * INTO auxRegistroVentas_FormasPago IN '" & strAux & "' FROM auxRegistroVentas_FormasPago__"
+        Else
+            strSQL = "INSERT INTO auxRegistroVentas_FormasPago SELECT  * FROM auxRegistroVentas_FormasPago__"
+        End If
+        CurrentDb.Execute strSQL, dbFailOnError
+        intPrimera = False
+SiguienteFile:
+        rsFi.MoveNext
+    Wend
+Salir_ACTUALIZAR_auxRegistroVentas:
+    ArreglarIVAsNulos
+    ArreglarComensales
+    ArreglarVariasFormaPago
+    PonTramosDH
+    gintActualizar_auxRegistroVentas = False
+    
+    SysCmd acSysCmdClearStatus
+    Exit Sub
+Error_ACTUALIZAR_auxRegistroVentas:
+
+    Select Case Err
+        Case 3044
+            strMsg = strMsg & "Error nº " & Err & ": " & Err.Description & vbCrLf
+            GoTo SiguienteFile
+        Case Else
+            MBox "Error nº " & Err & vbCrLf & Err.Description & vbCrLf & "En Actualizar_auxRegistroVentas"
+    End Select
+    Resume Salir_ACTUALIZAR_auxRegistroVentas
+    Resume Next
+End Sub
+
+
+Public Function DimeLin(lngIdTickCab As Long) As Integer
+    Static Ordenar As Integer, lngAntIdTickCab As Long
+    If lngIdTickCab <> lngAntIdTickCab Then
+        Ordenar = 0
+        lngAntIdTickCab = lngIdTickCab
+    End If
+    Ordenar = Ordenar + 1
+    DimeLin = Ordenar
+End Function
+
+Public Sub ArreglarComensales()
+    On Error GoTo Error_ArreglarComensales
+    SysCmd acSysCmdSetStatus, "Arreglar Comensales..."
+    Dim rs As Recordset, strSQL As String
+    strSQL = "UPDATE auxRegistroVentas SET Linea = DimeLin(AutoNum)" ' ORDER BY AutoNum, Linea"
+    CurrentDb.Execute strSQL, dbFailOnError
+    strSQL = "UPDATE auxRegistroVentas SET Comensales=Comensales * Iif(Linea=1,1,0)" ' ORDER BY AutoNum, Linea"
+    CurrentDb.Execute strSQL, dbFailOnError
+    SysCmd acSysCmdClearStatus
+    
+Salir_ArreglarComensales:
+    Exit Sub
+Error_ArreglarComensales:
+    Select Case Err
+        Case Else
+            MBox "Error nº " & Err & " en ArreglarComensales" & vbCrLf & Err.Description
+            
+            Resume Salir_ArreglarComensales
+    End Select
+
+End Sub
+
+Public Sub PonTramosDH()
+    On Error GoTo Error_PonTramosDH
+    SysCmd acSysCmdSetStatus, "Arreglar Comensales..."
+    Dim rs As Recordset, strSQL As String
+    Set rs = CurrentDb.OpenRecordset("SELECT * FROM cfgDiaHoraTramos ORDER BY IdTramoDH", dbOpenSnapshot)
+    While Not rs.EOF
+        strSQL = "UPDATE auxRegistroVentas SET TramoDH = " & ConComillas(rs("TramoDiaHora"))
+        strSQL = strSQL & " WHERE Instr('" & rs("LMXJVSD") & "', DiaD)>0"
+        strSQL = strSQL & " AND HoraH  >= '" & Format(rs("HoraDesde"), "HH:NN") & "'"
+        strSQL = strSQL & " AND HoraH  <= '" & Format(rs("HoraHasta"), "HH:NN") & "'"
+        strSQL = strSQL & " AND TramoDH = 'Otros'"
+        CurrentDb.Execute strSQL, dbFailOnError
+        rs.MoveNext
+    Wend
+Salir_PonTramosDH:
+    Exit Sub
+Error_PonTramosDH:
+    Select Case Err
+        Case Else
+            MBox "Error nº " & Err & " en PonTramosDH" & vbCrLf & Err.Description
+            
+            Resume Salir_PonTramosDH
+    End Select
+
+End Sub
+
+Public Sub ArreglarIVAsNulos()
+    On Error GoTo Error_ArreglarIVAsNulos
+    SysCmd acSysCmdSetStatus, "Arreglar IVAs Nulos..."
+    Dim rs As Recordset, strSQL As String, curIVA As Currency
+    curIVA = Nz(DLookup("IVA", "auxRegistroVentas", "IVA>0"), 0)
+    strSQL = "UPDATE auxRegistroVentas SET IVA = " & ComaPunto(curIVA) & " WHERE IVA Is Null"
+    CurrentDb.Execute strSQL, dbFailOnError
+    SysCmd acSysCmdClearStatus
+    
+Salir_ArreglarIVAsNulos:
+    Exit Sub
+Error_ArreglarIVAsNulos:
+    Select Case Err
+        Case Else
+            MBox "Error nº " & Err & " en ArreglarIVAsNulos" & vbCrLf & Err.Description
+            
+            Resume Salir_ArreglarIVAsNulos
+    End Select
+
+End Sub
+
+
+Public Sub ACTUALIZAR_auxRegistroTiques(dtD As Date, dtH As Date, Optional strHoraDesde As String = "00:00" _
+                                                                , Optional strHoraHasta As String = "23:59" _
+                                                                , Optional lngIdPuesto As Long = 0 _
+                                                                , Optional lngIdBarm As Long = 0 _
+                                                                , Optional lngCodTipTick As Long = -99 _
+                                                                , Optional strCli As String = "" _
+                                                                , Optional strGrupoBarm As String = "")
+    
+    Dim i As Integer, intPas As Integer
+    Dim rs As Recordset, rsAux As Recordset, rsFP As Recordset, rsAuxFP As Recordset, rsFi As Recordset
+    Dim strSQL As String, strSQL0 As String, strSQL1 As String, strSQL2 As String, strSQL3 As String, lngL As Long
+    Dim lngComensales As Long
+    Dim db As Database, intR As Integer, rsPu As Recordset, intHA As Integer, strMDB As String, strMsg As String
+    On Error GoTo Error_ACTUALIZAR_auxRegistroTiques
+    strSQL = "SELECT tbTickCab.IdTickCab, tbTickCab.Serie,  Format(tbTickCab.NumTicket,'00000') AS NumTique"
+    strSQL = strSQL & ", tbTickCab.IdPuesto, tbTickCab.Fecha, tbTickCab.Hora"
+    strSQL = strSQL & ", [Adultos]+[Niños] AS Comensales, tbTickCab.IvaInc_Det, tbTickCab.CodTipTick, tbTickCab.IdBarm"
+    strSQL = strSQL & ", Nz(tbTickCab_Cli.NIF,'-') AS NIF, Left(Nz(tbTickCab_Cli.CabeceraTicket,'-'),50) AS Cliente"
+    strSQL = strSQL & ", DiaD(tbTickCab.Fecha) as DiaD, Format(Hora,'HH:NN') as HoraH, 'Otros' as TramoDH"
+    strSQL = strSQL & ", tbTickCab.IdFactura, tbTickCab.TotalTicket"
+    strSQL0 = strSQL
+    
+    strSQL = ""
+    strSQL = strSQL & " FROM (tbTickCab LEFT JOIN tbTickCab_Cli ON tbTickCab.IdTickCab = tbTickCab_Cli.IdTickCab)"
+    If strGrupoBarm <> "" Then
+        strSQL = strSQL & " LEFT JOIN tbBarm ON tbTickCab.IdBarm = tbBarm.IdBarm"
+    End If
+    strSQL = strSQL & " WHERE tbTickCab.Fecha Between " & CLng(dtD) & " And " & CLng(dtH)
+    If strHoraDesde <> "00:00" Then strSQL = strSQL & " AND Format(tbTickCab.Hora,'HH:NN')>='" & strHoraDesde & "'"
+    If strHoraHasta <> "23:59" Then strSQL = strSQL & " AND Format(tbTickCab.Hora,'HH:NN')<='" & strHoraHasta & "'"
+    If lngIdPuesto <> 0 Then
+        strSQL = strSQL & " AND tbTickCab.IdPuesto = " & lngIdPuesto
+    End If
+    If lngIdBarm <> 0 Then
+        strSQL = strSQL & " AND tbTickCab.IdBarm = " & lngIdBarm
+    End If
+    If strGrupoBarm <> "" Then
+        strSQL = strSQL & " AND tbBarm.Grupo = " & ConComillas(strGrupoBarm)
+    End If
+    If lngCodTipTick > 0 Then
+        strSQL = strSQL & " AND tbTickCab.CodTipTick = " & lngCodTipTick
+    End If
+    If Len(strCli) > 0 Then
+        strSQL = strSQL & " AND CabeceraTicket  Like " & ConComillas("*" & strCli & "*")
+    End If
+    strSQL = strSQL & " ORDER BY tbTickCab.Serie, tbTickCab.NumTicket"
+    strSQL1 = strSQL
+    strSQL = "SELECT tbTickCab.IdTickCab, tbCajaDet.CodFPago, tbFPago.Descripcion as FormaPago, tbCajaDet.Cantidad as Importe, tbTickCab.Fecha, tbTickCab.IdPuesto"
+    'strSQL = strSQL & " FROM tbFPago INNER JOIN (tbTickCab INNER JOIN (tbCajaCab INNER JOIN tbCajaDet ON tbCajaCab.IdCajaCab = tbCajaDet.IdCajaCab) ON (tbTickCab.IdPuesto = tbCajaCab.IdPuesto) AND (tbTickCab.IdTickCab = tbCajaDet.IdFrom)) ON tbFPago.CodFPago = tbCajaDet.CodFPago"
+    strSQL2 = strSQL
+    strSQL = ""
+    strSQL = strSQL & " FROM tbFPago INNER JOIN (tbCajaCab INNER JOIN (tbTickCab INNER JOIN tbCajaDet ON tbTickCab.IdTickCab = tbCajaDet.IdFrom) ON tbCajaCab.IdCajaCab = tbCajaDet.IdCajaCab) ON tbFPago.CodFPago = tbCajaDet.CodFPago"
+    strSQL = strSQL & " WHERE tbTickCab.Fecha Between " & CLng(dtD) & " And " & CLng(dtH)
+    strSQL = strSQL & " AND tbCajaDet.Origen='T'"
+    strSQL = strSQL & " ORDER BY tbTickCab.IdTickCab;"
+    strSQL3 = strSQL
+    
+    Dim strNumFac As String, intLin As Integer, dtFec As Date, strNIF As String
+    Dim curTotal As Currency, intPrimera As Integer, strAux As String
+    strAux = DirectorioDe(CurrentDb.Name) & "R4AUX.mdb"
+
+    'Rellenar auxFiles
+    Pon_auxFiles_Historicos CDate(dtD), CDate(dtH), lngIdPuesto, , , True, True
+    
+    intPrimera = True
+    Set rsFi = CurrentDb.OpenRecordset("SELECT * FROM auxFiles ORDER By Orden")
+    While Not rsFi.EOF
+        strMDB = rsFi("strMdb")
+        SysCmd acSysCmdSetStatus, "Leyendo fichero histórico: " & strMDB
+        Set db = OpenDatabase(strMDB)
+        EliminarTabla strMDB, "auxRegistroTiques"
+        db.Execute strSQL0 & " INTO auxRegistroTiques IN '" & strMDB & "' " & strSQL1, dbFailOnError
+        VincularNuevaTabla strMDB, "auxRegistroTiques", "auxRegistroTiques__"
+        If intPrimera Then
+            EliminarTabla strAux, "auxRegistroTiques"
+            strSQL = "SELECT *, '" & strMDB & "' AS FileMDB INTO auxRegistroTiques IN '" & strAux & "' FROM auxRegistroTiques__"
+        Else
+            strSQL = "INSERT INTO auxRegistroTiques SELECT  * , '" & strMDB & "' AS FileMDB FROM auxRegistroTiques__"
+        End If
+        CurrentDb.Execute strSQL, dbFailOnError
+        
+        EliminarTabla strMDB, "auxRegistroTiques_FormasPago"
+        db.Execute strSQL2 & " INTO auxRegistroTiques_FormasPago IN '" & strMDB & "' " & strSQL3, dbFailOnError
+        VincularNuevaTabla strMDB, "auxRegistroTiques_FormasPago", "auxRegistroTiques_FormasPago__"
+        If intPrimera Then
+            EliminarTabla strAux, "auxRegistroTiques_FormasPago"
+            strSQL = "SELECT * INTO auxRegistroTiques_FormasPago IN '" & strAux & "' FROM auxRegistroTiques_FormasPago__"
+        Else
+            strSQL = "INSERT INTO auxRegistroTiques_FormasPago SELECT  * FROM auxRegistroTiques_FormasPago__"
+        End If
+        CurrentDb.Execute strSQL, dbFailOnError
+        intPrimera = False
+SiguienteFile:
+        rsFi.MoveNext
+    Wend
+Salir_ACTUALIZAR_auxRegistroTiques:
+    ArreglarIVAsNulos
+    ArreglarComensales
+    PonTramosDH
+    gintActualizar_auxRegistroTiques = False
+    
+    SysCmd acSysCmdClearStatus
+    Exit Sub
+Error_ACTUALIZAR_auxRegistroTiques:
+
+    Select Case Err
+        Case 3044
+            strMsg = strMsg & "Error nº " & Err & ": " & Err.Description & vbCrLf
+            GoTo SiguienteFile
+        Case Else
+            MBox "Error nº " & Err & vbCrLf & Err.Description & vbCrLf & "En ACTUALIZAR_auxRegistroTiques"
+    End Select
+    Resume Salir_ACTUALIZAR_auxRegistroTiques
+    Resume Next
+End Sub
+
+Public Sub ArreglaTiemposPresencia(dtD As Date, dtH As Date)
+    On Error GoTo HandleError
+    Dim strSQL As String, rs As Recordset, dtE As Date, dtS As Date
+    strSQL = "SELECT * FROM tbPresenciaBarm"
+    strSQL = strSQL & " WHERE Fecha Between #" & Format(dtD, "mm/dd/yyyy") & "# And #" & Format(dtH, "mm/dd/yyyy") & "#"
+    strSQL = strSQL & " AND (Tiempo>100000 OR Tiempo<=0)"
+    Set rs = CurrentDb.OpenRecordset(strSQL, dbOpenDynaset)
+    SysCmd acSysCmdSetStatus, "Arreglado tiempos en Presencia"
+    While Not rs.EOF
+        rs.Edit
+        rs("Tiempo") = DimeDHMinutos(Nz(rs("DH"), ""), dtE, dtS)
+        rs("Entra") = dtE
+        rs("Sale") = dtS
+        rs.Update
+        rs.MoveNext
+    Wend
+HandleExit:
+    SysCmd acSysCmdClearStatus
+    Exit Sub
+HandleError:
+    MBox Err.Description
+    Resume HandleExit
+End Sub
+
+
+Public Sub ACTUALIZAR_auxPresenciaBarm(dtD As Date, dtH As Date, Optional strHoraDesde As String = "00:00" _
+                                                                , Optional strHoraHasta As String = "23:59" _
+                                                                , Optional lngIdBarm As Long = 0 _
+                                                                , Optional lngIdPuesto As Long = 0, Optional intAccesosNO As Integer = True _
+                                                                , Optional strGrupoBarm As String = "")
+    Dim i As Integer, intPas As Integer
+    Dim rs As Recordset, rsAux As Recordset, rsFP As Recordset, rsAuxFP As Recordset, rsFi As Recordset
+    Dim strSQL As String, strSQL0 As String, strSQL1 As String, strSQL2 As String, strSQL3 As String, lngL As Long
+    Dim lngComensales As Long
+    Dim db As Database, intR As Integer, rsPu As Recordset, intHA As Integer, strMDB As String, strMsg As String, strAux As String, intPrimera As Integer
+    On Error GoTo Error_ACTUALIZAR_auxPresenciaBarm
+    'ArreglaTiemposPresencia dtD, dtH
+    CompruebaPresenciaOK dtD, dtH, True
+    strSQL = "DELETE * FROM auxPresenciaBarm"
+    CurrentDb.Execute strSQL, dbFailOnError
+            
+    strSQL = "INSERT INTO auxPresenciaBarm SELECT tbPresenciaBarm.*"
+    strSQL0 = strSQL
+    strSQL = ""
+    strSQL = strSQL & " FROM tbPresenciaBarm LEFT JOIN tbBarm On tbPresenciaBarm.IdBarm = tbBarm.IdBarm"
+    strSQL = strSQL & " WHERE Fecha Between #" & Format(dtD, "mm/dd/yyyy") & "# And #" & Format(dtH, "mm/dd/yyyy") & "#"
+    strSQL = strSQL & " AND Format(Entra,'HH:NN')>='" & strHoraDesde & "'"
+    strSQL = strSQL & " AND Format(Entra,'HH:NN')<='" & strHoraHasta & "'"
+    If lngIdBarm <> 0 Then
+        strSQL = strSQL & " AND tbPresenciaBarm.IdBarm = " & lngIdBarm
+    End If
+    If strGrupoBarm <> "" Then
+        strSQL = strSQL & " AND tbBarm.Grupo= " & ConComillas(strGrupoBarm)
+    End If
+    strSQL = strSQL & " ORDER BY IdPresenciaBarm"
+    strSQL1 = strSQL
+    CurrentDb.Execute strSQL0 & strSQL1, dbFailOnError ' tbPresenciaBarm no se traspasa a históricos!
+    'arreglar tiempos erróneos
+    strSQL = "UPDATE auxPresenciaBarm SET Tiempo=0 WHERE Tiempo >100000"
+    CurrentDb.Execute strSQL, dbFailOnError
+    
+    '-------------------------
+    If intAccesosNO = False Then
+        strSQL = "DELETE * FROM auxAccesos"
+        CurrentDb.Execute strSQL, dbFailOnError
+        strSQL = "SELECT tbAccesos.*"
+        strSQL2 = strSQL
+        strSQL = ""
+        strSQL = strSQL & " FROM tbAccesos"
+        strSQL = strSQL & " WHERE Fecha Between #" & Format(dtD, "mm/dd/yyyy") & "# And #" & Format(dtH, "mm/dd/yyyy") & "#"
+        If lngIdBarm <> 0 Then
+            strSQL = strSQL & " AND tbAccesos.CodBarm = " & ConComillas(Nz(DLookup("CodBarman", "tbBarm", "IdBarm = " & lngIdBarm), ""))
+        End If
+        strSQL = strSQL & " ORDER BY IdAcceso"
+        strSQL3 = strSQL
+        
+        strAux = DirectorioDe(CurrentDb.Name) & "R4AUX.mdb"
+    
+        'Rellenar auxFiles
+        CurrentDb.Execute "DELETE * FROM auxFiles", dbFailOnError
+        strSQL = "SELECT IdPuesto, CarpetaBase FROM cfgPuestos"
+        If lngIdPuesto = 0 Then
+            strSQL = strSQL & " WHERE EnUso"
+        Else
+            strSQL = strSQL & " WHERE IdPuesto = " & lngIdPuesto
+        End If
+        Set rsPu = CurrentDb.OpenRecordset(strSQL, dbOpenSnapshot)
+        While Not rsPu.EOF
+            Pon_auxFiles_Historicos dtD, dtH, rsPu("IdPuesto"), , False, , , True
+            rsPu.MoveNext
+        Wend
+        intPrimera = True
+        Set rsFi = CurrentDb.OpenRecordset("SELECT * FROM auxFiles ORDER By Orden")
+        While Not rsFi.EOF
+            strMDB = rsFi("strMdb")
+            SysCmd acSysCmdSetStatus, "Leyendo fichero histórico: " & strMDB
+            Set db = OpenDatabase(strMDB)
+            'EliminarTabla strMDB, "auxPresenciaBarm"
+            EliminarTabla strMDB, "auxAccesos"
+            
+            'db.Execute strSQL0 & " INTO auxPresenciaBarm IN '" & strMDB & "' " & strSQL1, dbFailOnError
+            'VincularNuevaTabla strMDB, "auxPresenciaBarm", "auxPresenciaBarm__"
+            'If intPrimera Then
+            '    EliminarTabla strAux, "auxPresenciaBarm"
+            '    strSQL = "SELECT *, '" & strMDB & "' AS FileMDB INTO auxPresenciaBarm IN '" & strAux & "' FROM auxPresenciaBarm__"
+            'Else
+            '    strSQL = "INSERT INTO auxPresenciaBarm SELECT  * , '" & strMDB & "' AS FileMDB FROM auxPresenciaBarm__"
+            'End If
+            'CurrentDb.Execute strSQL, dbFailOnError
+            
+            db.Execute strSQL2 & " INTO auxAccesos IN '" & strMDB & "' " & strSQL3, dbFailOnError
+            VincularNuevaTabla strMDB, "auxAccesos", "auxAccesos__"
+            If intPrimera Then
+                EliminarTabla strAux, "auxAccesos"
+                strSQL = "SELECT *, '" & strMDB & "' AS FileMDB INTO auxAccesos IN '" & strAux & "' FROM auxAccesos__"
+            Else
+                strSQL = "INSERT INTO auxAccesos SELECT  * , '" & strMDB & "' AS FileMDB FROM auxAccesos__"
+            End If
+            CurrentDb.Execute strSQL, dbFailOnError
+            
+            intPrimera = False
+SiguienteFile:
+            rsFi.MoveNext
+        Wend
+    End If
+Salir_ACTUALIZAR_auxPresenciaBarm:
+ '   gintACTUALIZAR_auxPresenciaBarm = False
+    
+    SysCmd acSysCmdClearStatus
+    Exit Sub
+Error_ACTUALIZAR_auxPresenciaBarm:
+    Select Case Err
+        Case 3078
+            strMsg = strMsg & "Error nº " & Err & ": " & Err.Description & vbCrLf
+            GoTo SiguienteFile
+        Case 3044
+            strMsg = strMsg & "Error nº " & Err & ": " & Err.Description & vbCrLf
+            GoTo SiguienteFile
+        Case Else
+            MBox "Error nº " & Err & vbCrLf & Err.Description & vbCrLf & "En ACTUALIZAR_auxPresenciaBarm"
+    End Select
+    Resume Salir_ACTUALIZAR_auxPresenciaBarm
+    Resume Next
+End Sub
+
+
+Public Sub ACTUALIZAR_auxLineasBorradas(dtD As Date, dtH As Date, Optional strHoraDesde As String = "00:00" _
+                                                                , Optional strHoraHasta As String = "23:59" _
+                                                                , Optional lngIdBarm As Long = 0 _
+                                                                , Optional lngIdPuesto As Long = 0)
+    Dim i As Integer, intPas As Integer
+    Dim rs As Recordset, rsAux As Recordset, rsFP As Recordset, rsAuxFP As Recordset, rsFi As Recordset
+    Dim strSQL As String, strSQL0 As String, strSQL1 As String, strSQL2 As String, strSQL3 As String, lngL As Long
+    Dim lngComensales As Long
+    Dim db As Database, intR As Integer, rsPu As Recordset, intHA As Integer, strMDB As String, strMsg As String, strAux As String, intPrimera As Integer
+    On Error GoTo Error_ACTUALIZAR_auxLineasBorradas
+    strSQL = "DELETE * FROM auxLineasBorradas"
+    CurrentDb.Execute strSQL, dbFailOnError
+    
+    strSQL = "SELECT tbLineasBorradas.*"
+    strSQL0 = strSQL
+    strSQL = ""
+    strSQL = strSQL & " FROM tbLineasBorradas"
+    strSQL = strSQL & " WHERE Fix(Ahora) Between #" & Format(dtD, "mm/dd/yyyy") & "# And #" & Format(dtH, "mm/dd/yyyy") & "#"
+    If strHoraDesde <> "" Then
+        strSQL = strSQL & " AND Format(Ahora,'HH:NN')>='" & strHoraDesde & "'"
+    End If
+    If strHoraHasta <> "" Then
+        strSQL = strSQL & " AND Format(Ahora,'HH:NN')<='" & strHoraHasta & "'"
+    End If
+    If lngIdBarm <> 0 Then
+        strSQL = strSQL & " AND tbLineasBorradas.IdBarm = " & lngIdBarm
+    End If
+    strSQL = strSQL & " ORDER BY Ahora, IdTickDet"
+    strSQL1 = strSQL
+    strAux = DirectorioDe(CurrentDb.Name) & "R4AUX.mdb"
+
+    'Rellenar auxFiles
+    CurrentDb.Execute "DELETE * FROM auxFiles", dbFailOnError
+    strSQL = "SELECT IdPuesto, CarpetaBase FROM cfgPuestos"
+    If lngIdPuesto = 0 Then
+        strSQL = strSQL & " WHERE EnUso"
+    Else
+        strSQL = strSQL & " WHERE IdPuesto = " & lngIdPuesto
+    End If
+    Set rsPu = CurrentDb.OpenRecordset(strSQL, dbOpenSnapshot)
+    While Not rsPu.EOF
+        Pon_auxFiles_Historicos CDate(dtD), CDate(dtH), rsPu("IdPuesto"), , False, False, False, True
+        rsPu.MoveNext
+    Wend
+    intPrimera = True
+    Set rsFi = CurrentDb.OpenRecordset("SELECT * FROM auxFiles ORDER By Orden")
+    While Not rsFi.EOF
+        strMDB = rsFi("strMdb")
+        SysCmd acSysCmdSetStatus, "Leyendo fichero histórico: " & strMDB
+        Set db = OpenDatabase(strMDB)
+        EliminarTabla strMDB, "auxLineasBorradas"
+        db.Execute strSQL0 & " INTO auxLineasBorradas IN '" & strMDB & "' " & strSQL1, dbFailOnError
+        VincularNuevaTabla strMDB, "auxLineasBorradas", "auxLineasBorradas__"
+        If intPrimera Then
+            EliminarTabla strAux, "auxLineasBorradas"
+            strSQL = "SELECT *, '" & strMDB & "' AS FileMDB INTO auxLineasBorradas IN '" & strAux & "' FROM auxLineasBorradas__"
+        Else
+            strSQL = "INSERT INTO auxLineasBorradas SELECT  * , '" & strMDB & "' AS FileMDB FROM auxLineasBorradas__"
+        End If
+        CurrentDb.Execute strSQL, dbFailOnError
+        intPrimera = False
+SiguienteFile:
+        rsFi.MoveNext
+    Wend
+Salir_ACTUALIZAR_auxLineasBorradas:
+ '   gintACTUALIZAR_auxLineasBorradas = False
+    
+    SysCmd acSysCmdClearStatus
+    Exit Sub
+Error_ACTUALIZAR_auxLineasBorradas:
+    Select Case Err
+        Case 3078
+            strMsg = strMsg & "Error nº " & Err & ": " & Err.Description & vbCrLf
+            GoTo SiguienteFile
+        Case 3044
+            strMsg = strMsg & "Error nº " & Err & ": " & Err.Description & vbCrLf
+            GoTo SiguienteFile
+        Case Else
+            MBox "Error nº " & Err & vbCrLf & Err.Description & vbCrLf & "En ACTUALIZAR_auxLineasBorradas"
+    End Select
+    Resume Salir_ACTUALIZAR_auxLineasBorradas
+    Resume Next
+End Sub
+
+Public Sub AgruparConceptos_auxRegistroVentas(strAgruparConceptos As String)
+    On Error GoTo HandleError
+    Dim vConceptos As Variant, i As Integer, strConcepto As String, strSQL As String
+    vConceptos = Split(strAgruparConceptos, ";")
+    For i = 0 To UBound(vConceptos)
+        strConcepto = Replace(vConceptos(i), """", "")
+        'Debug.Print strConcepto
+        If strConcepto <> "" Then
+            strSQL = "UPDATE auxRegistroVentas SET Concepto = " & ConComillas(strConcepto & "*") & " WHERE Concepto Like '" & strConcepto & "*'"
+            CurrentDb.Execute strSQL, dbFailOnError
+        End If
+    Next i
+HandleExit:
+    Exit Sub
+HandleError:
+    MBox Err.Description
+    Resume HandleExit
+End Sub
+
+Public Sub ACTUALIZAR_auxPagosCaja(dtD As Date, dtH As Date, Optional lngIdPuesto As Long = 0)
+    Dim i As Integer, intPas As Integer
+    Dim rs As Recordset, rsAux As Recordset, rsFP As Recordset, rsAuxFP As Recordset, rsFi As Recordset
+    Dim strSQL As String, strSQL0 As String, strSQL1 As String, strSQL2 As String, strSQL3 As String, lngL As Long
+    Dim lngComensales As Long
+    Dim db As Database, intR As Integer, rsPu As Recordset, intHA As Integer, strMDB As String, strMsg As String, strAux As String, intPrimera As Integer
+    Dim tdf As TableDef
+    On Error GoTo HandleError
+    'ArreglaTiemposPresencia dtD, dtH
+    
+    strSQL = "DELETE * FROM auxPagosCaja"
+    CurrentDb.Execute strSQL, dbFailOnError
+            
+    strSQL = "INSERT INTO auxPagosCaja SELECT tbPagosCaja.*"
+    strSQL0 = strSQL
+    strSQL = ""
+    strSQL = strSQL & " FROM tbPagosCaja"
+    strSQL = strSQL & " WHERE Fecha Between #" & Format(dtD, "mm/dd/yyyy") & "# And #" & Format(dtH, "mm/dd/yyyy") & "#"
+    strSQL1 = strSQL
+    CurrentDb.Execute strSQL0 & strSQL1, dbFailOnError '
+    
+    strSQL = "SELECT tbPagosCaja.*"
+    strSQL2 = strSQL
+    strSQL = ""
+    strSQL = strSQL & " FROM tbPagosCaja"
+    strSQL = strSQL & " WHERE Fecha Between #" & Format(dtD, "mm/dd/yyyy") & "# And #" & Format(dtH, "mm/dd/yyyy") & "#"
+    strSQL3 = strSQL
+    strAux = DirectorioDe(CurrentDb.Name) & "R4AUX.mdb"
+    
+        
+    strAux = DirectorioDe(CurrentDb.Name) & "R4AUX.mdb"
+    
+    'Rellenar auxFiles-------------------------------------------
+    CurrentDb.Execute "DELETE * FROM auxFiles", dbFailOnError
+    strSQL = "SELECT IdPuesto, CarpetaBase FROM cfgPuestos"
+    If lngIdPuesto = 0 Then
+        strSQL = strSQL & " WHERE EnUso"
+    Else
+        strSQL = strSQL & " WHERE IdPuesto = " & lngIdPuesto
+    End If
+    Set rsPu = CurrentDb.OpenRecordset(strSQL, dbOpenSnapshot)
+    While Not rsPu.EOF
+        Pon_auxFiles_Historicos dtD, dtH, rsPu("IdPuesto"), , False, , , False
+        rsPu.MoveNext
+    Wend
+    'Rellenar auxFiles-------------------------------------------
+    intPrimera = True
+    Set rsFi = CurrentDb.OpenRecordset("SELECT * FROM auxFiles ORDER By Orden")
+    While Not rsFi.EOF
+        strMDB = rsFi("strMdb")
+        SysCmd acSysCmdSetStatus, "Leyendo fichero histórico: " & strMDB
+        Set db = OpenDatabase(strMDB)
+        EliminarTabla strMDB, "auxPagosCaja"
+        On Error Resume Next
+        Set tdf = db.TableDefs("tbPagosCaja")
+        If Err <> 0 Then
+            On Error GoTo HandleError
+            GoTo SiguienteFile
+        End If
+        On Error GoTo HandleError
+        
+        db.Execute strSQL2 & " INTO auxPagosCaja IN '" & strMDB & "' " & strSQL3, dbFailOnError
+        VincularNuevaTabla strMDB, "auxPagosCaja", "auxPagosCaja__"
+        If intPrimera Then
+            EliminarTabla strAux, "auxPagosCaja"
+            strSQL = "SELECT *, '" & strMDB & "' AS FileMDB INTO auxPagosCaja IN '" & strAux & "' FROM auxPagosCaja__"
+        Else
+            strSQL = "INSERT INTO auxPagosCaja SELECT  * , '" & strMDB & "' AS FileMDB FROM auxPagosCaja__"
+        End If
+        CurrentDb.Execute strSQL, dbFailOnError
+        
+        intPrimera = False
+SiguienteFile:
+        rsFi.MoveNext
+    Wend
+HandleExit:
+ '   gintACTUALIZAR_auxPagosCaja = False
+    
+    SysCmd acSysCmdClearStatus
+    Exit Sub
+HandleError:
+    Select Case Err
+        Case 3078
+            strMsg = strMsg & "Error nº " & Err & ": " & Err.Description & vbCrLf
+            GoTo SiguienteFile
+        Case 3044
+            strMsg = strMsg & "Error nº " & Err & ": " & Err.Description & vbCrLf
+            GoTo SiguienteFile
+        Case Else
+            MBox "Error nº " & Err & vbCrLf & Err.Description & vbCrLf & "En ACTUALIZAR_auxPagosCaja"
+    End Select
+    Resume HandleExit
+    Resume Next
+End Sub
+
+
+Public Function VariasFormasPagoTique(lIdTickCab As Long, dtFecha As Date, lIdPuesto As Long)
+    'Mira en los históricos para ver los pagos de un tique y devuelve en un array de este tipo: ["Metalico";"12,50";"Tarjeta";"25,89")
+    On Error GoTo HandleError
+    Dim rsFi As Recordset, strMDB As String, sSQL As String, db As Database, rs As Recordset, rsFP As Recordset, sR As String, sFP As String
+    Pon_auxFiles_Historicos dtFecha, dtFecha, lIdPuesto, , , , , , True
+    Set rsFi = CurrentDb.OpenRecordset("SELECT * FROM auxFiles ORDER By Orden", dbOpenSnapshot)
+    Set rsFP = CurrentDb.OpenRecordset("tbFPago", dbOpenSnapshot)
+    sSQL = "SELECT CodFPago, Cantidad" _
+        & " FROM tbCajaDet" _
+        & " WHERE Origen = 'T' AND IdFrom = " & lIdTickCab
+        
+    While Not rsFi.EOF
+        strMDB = rsFi("strMdb")
+        SysCmd acSysCmdSetStatus, "Leyendo fichero histórico: " & strMDB
+        Set db = OpenDatabase(strMDB)
+        Set rs = db.OpenRecordset(sSQL, dbOpenSnapshot)
+        While Not rs.EOF
+            rsFP.FindFirst "CodFPago = """ & rs("CodFPago") & """"
+            If rsFP.NoMatch Then
+                sFP = "?"
+            Else
+                sFP = rsFP("Descripcion")
+            End If
+            sR = sR & ";" & sFP & ";" & CStr(rs("Cantidad"))
+            rs.MoveNext
+        Wend
+SiguienteFile:
+        rsFi.MoveNext
+    Wend
+    If Len(sR) > 1 Then sR = Mid(sR, 2)
+    VariasFormasPagoTique = sR
+    
+HandleExit:
+    Exit Function
+HandleError:
+    MsgBox Err.Description
+    Resume HandleExit
+End Function
+
+Public Sub ArreglarVariasFormaPago()
+    On Error GoTo HandleError
+    Dim sSQL As String, rs As Recordset, i As Integer, vFsPago As Variant
+    Dim y As Long, z As Long
+    sSQL = "SELECT * FROM auxRegistroVentas_FormasPago" _
+        & " WHERE FormaPago = ""+ varias"""
+    Set rs = CurrentDb.OpenRecordset(sSQL, dbOpenDynaset)
+    If Not rs.EOF Then
+        rs.MoveLast
+        rs.MoveFirst
+    End If
+    z = rs.RecordCount
+    While Not rs.EOF
+        y = y + 1
+        SysCmd acSysCmdSetStatus, "ArreglandoVariasFormasPago: " & y & "/" & z
+        vFsPago = Split(VariasFormasPagoTique(rs("IdT"), rs("Fecha"), rs("IdPuesto")), ";")
+        For i = 0 To UBound(vFsPago) Step 2
+            If i = 0 Then
+                rs.Edit
+                rs("FormaPago") = vFsPago(i)
+                rs("Importe") = CCur(vFsPago(i + 1))
+                rs.Update
+            Else
+                sSQL = "INSERT INTO auxRegistroVentas_FormasPago(IdT, Importe, FormaPago, Fecha, IdPuesto)" _
+                    & " VALUES (" & rs("IdT") & ", " & ComaPunto(vFsPago(i + 1)) & ", """ & vFsPago(i) & """, " & CLng(rs("Fecha")) & ", " & rs("IdPuesto") & ")"
+                CurrentDb.Execute sSQL, dbFailOnError
+            End If
+        Next i
+        rs.MoveNext
+    Wend
+    SysCmd acSysCmdClearStatus
+    
+HandleExit:
+    Exit Sub
+HandleError:
+    MsgBox Err.Description
+    Resume HandleExit
+End Sub

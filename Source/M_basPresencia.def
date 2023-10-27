@@ -1,0 +1,855 @@
+Option Compare Database
+Option Explicit
+
+Public Function DimeHorarioBase(strHorarioBaseXML As String) As String
+    On Error GoTo Error_DimeHorarioBase
+    Dim strR As String, strX As String, i As Integer, strSemanaXML As String, s As Integer
+    strX = Nz(DimeXML(strHorarioBaseXML, "TipoHorario"), "")
+    Select Case strX
+        Case "": strR = "-"
+        Case 0, 1
+            strR = "Horario Semanal Fijo " & vbCrLf
+            strSemanaXML = Nz(DimeXML(strHorarioBaseXML, "Semana_1"), "")
+            For i = 1 To 7
+                strR = strR & LetraDia_1_7(i) & ": " & DimeHorarioDia(Nz(DimeXML(strSemanaXML, LetraDia_1_7(i)), "")) & vbCrLf
+            Next i
+        Case Else
+            strR = "Horario Ciclo de " & strX & " semanas" & vbCrLf
+            For s = 1 To CInt(strX)
+                strSemanaXML = Nz(DimeXML(strHorarioBaseXML, "Semana_" & s), "")
+                strR = strR & "Semana " & s & ": " & vbCrLf
+                For i = 1 To 7
+                    strR = strR & LetraDia_1_7(i) & ": " & DimeHorarioDia(Nz(DimeXML(strSemanaXML, LetraDia_1_7(i)), "")) & vbCrLf
+                Next i
+            Next s
+    End Select
+    DimeHorarioBase = strR
+        
+Salir_DimeHorarioBase:
+    Exit Function
+Error_DimeHorarioBase:
+    Select Case Err
+        Case Else
+            MBox "error nº " & Err & " en DimeHorarioBase" & vbCrLf & Err.Description
+            Resume Salir_DimeHorarioBase
+    End Select
+
+End Function
+
+Public Function DimeTareasBase(strTareasBaseXML As String) As String
+    On Error GoTo Error_DimeTareasBase
+    Dim strR As String, strX As String, i As Integer
+    strX = strTareasBaseXML
+    Select Case strX
+        Case "": strR = "-"
+        Case Else
+            strR = "Tareas: " & vbCrLf
+            For i = 0 To 8
+                strR = strR & LetraDia_1_7(i) & ": " & DimeTareasDia(Nz(DimeXML(strTareasBaseXML, LetraDia_1_7(i)), "")) & vbCrLf
+            Next i
+    End Select
+    DimeTareasBase = strR
+Salir_DimeTareasBase:
+    Exit Function
+Error_DimeTareasBase:
+    Select Case Err
+        Case Else
+            MBox "error nº " & Err & " en DimeTareasBase" & vbCrLf & Err.Description
+            Resume Salir_DimeTareasBase
+    End Select
+
+End Function
+
+Public Function DimeHorarioDia(strXML As String, Optional intSaltoLinea As Integer = False, Optional strSangria As String = "") As String
+    On Error GoTo Error_DimeHorarioDia
+    Dim strR As String, strX As String, i As Integer, j As Integer
+    j = 1
+Bucle:
+    strX = Nz(DimeXML(strXML, "d", , j), "")
+    If strX <> "" Then
+        strR = strR & strX & " - "
+        strX = Nz(DimeXML(strXML, "h", , j), "?")
+        strR = strR & strX & IIf(Not intSaltoLinea, " | ", vbCrLf & strSangria)
+        j = j + 1
+        GoTo Bucle
+    End If
+    If Len(strR) > 3 Then strR = RecDerTop(strR, IIf(Not intSaltoLinea, 3, 2), 0)
+    DimeHorarioDia = strR
+Salir_DimeHorarioDia:
+    Exit Function
+Error_DimeHorarioDia:
+    Select Case Err
+        Case Else
+            MBox "error nº " & Err & " en DimeHorarioDia" & vbCrLf & Err.Description
+            Resume Salir_DimeHorarioDia
+    End Select
+
+End Function
+
+Public Function DimeTareasDia(strTareas As String) As String
+    On Error GoTo Error_DimeTareasDia
+    DimeTareasDia = strTareas
+Salir_DimeTareasDia:
+    Exit Function
+Error_DimeTareasDia:
+    Select Case Err
+        Case Else
+            MBox "error nº " & Err & " en DimeTareasDia" & vbCrLf & Err.Description
+            Resume Salir_DimeTareasDia
+    End Select
+
+End Function
+
+Public Function LetraDia_1_7(intDia As Integer, Optional iChar As Integer = False) As String
+    Dim strR As String
+    If Not iChar Then
+        Select Case intDia
+            Case 0: strR = "Todos"
+            Case 1: strR = "Lun"
+            Case 2: strR = "Mar"
+            Case 3: strR = "Mie"
+            Case 4: strR = "Jue"
+            Case 5: strR = "Vie"
+            Case 6: strR = "Sab"
+            Case 7: strR = "Dom"
+            Case 8: strR = "Otros"
+            Case Else: strR = "?"
+        End Select
+    Else
+        Select Case intDia
+            Case 0: strR = "T"
+            Case 1: strR = "L"
+            Case 2: strR = "M"
+            Case 3: strR = "X"
+            Case 4: strR = "J"
+            Case 5: strR = "V"
+            Case 6: strR = "S"
+            Case 7: strR = "D"
+            Case 8: strR = "O"
+            Case Else: strR = "?"
+        End Select
+    End If
+    LetraDia_1_7 = strR
+End Function
+
+Public Function EditaHorarioBase(vstrHorarioBase As Variant, Optional strTitulo As String = "Horario Base") As Variant
+    On Error GoTo Error_EditaHorarioBase
+    Dim strR As String, strX As String, i As Integer
+    Dim strXML As String
+    PonXML strXML, "HorarioBase", Nz(vstrHorarioBase, "")
+    PonXML strXML, "Titulo", strTitulo
+    DoCmd.OpenForm "frmHorarioBase", , , , , acDialog, strXML
+    If Not IsOpenForm("frmHorarioBase") Then
+        strR = Nz(vstrHorarioBase, "")
+        GoTo HandleExit
+    End If
+    strR = (Forms("frmHorarioBase").Tag)
+    DoCmd.Close acForm, "frmHorarioBase"
+HandleExit:
+    EditaHorarioBase = strR
+        
+Salir_EditaHorarioBase:
+    Exit Function
+Error_EditaHorarioBase:
+    Select Case Err
+        Case Else
+            MBox "error nº " & Err & " en EditaHorarioBase" & vbCrLf & Err.Description
+            Resume Salir_EditaHorarioBase
+    End Select
+
+End Function
+
+Public Function EditaTareasBase(vstrTareasBase As Variant, Optional strTitulo As String = "Tareas Base") As Variant
+    On Error GoTo Error_EditaTareasBase
+    Dim strR As String, strX As String, i As Integer
+    Dim strXML As String
+    PonXML strXML, "TareasBase", Nz(vstrTareasBase, "")
+    PonXML strXML, "Titulo", strTitulo
+    DoCmd.OpenForm "frmTareasBase", , , , , acDialog, strXML
+    If Not IsOpenForm("frmTareasBase") Then Exit Function
+    strR = DimeTareasBaseXML_Form(Forms("frmTareasBase"))
+    DoCmd.Close acForm, "frmTareasBase"
+    EditaTareasBase = strR
+Salir_EditaTareasBase:
+    Exit Function
+Error_EditaTareasBase:
+    Select Case Err
+        Case Else
+            MBox "Error nº " & Err & " en EditaTareasBase" & vbCrLf & Err.Description
+            Resume Salir_EditaTareasBase
+    End Select
+
+End Function
+
+Public Function DimeTareasBaseXML_Form(frm As Form) As String
+    On Error GoTo Error_DimeTareasBaseXML_Form
+    Dim strR As String, strX As String, i As Integer, strLD As String
+    
+    For i = 0 To 8
+        strLD = LetraDia_1_7(i)
+        PonXML strR, strLD, frm("lbl" & strLD).Tag
+    Next i
+    DimeTareasBaseXML_Form = strR
+        
+Salir_DimeTareasBaseXML_Form:
+    Exit Function
+Error_DimeTareasBaseXML_Form:
+    Select Case Err
+        Case Else
+            MBox "error nº " & Err & " en DimeTareasBaseXML_Form" & vbCrLf & Err.Description
+            Resume Salir_DimeTareasBaseXML_Form
+    End Select
+End Function
+
+Public Function GenerarHorarioSemana(dtLunes As Date, Optional lngIdBarm As Long = 0, Optional intModificar012 As Integer = 0, Optional intDia As Integer = 0, Optional intOtros As Integer = False)
+
+    On Error GoTo Error_GenerarHorarioSemana
+    If Weekday(dtLunes) <> vbMonday Then
+        MBox Format(dtLunes, "ddddd") & " no es lunes!", vbExclamation
+        Exit Function
+    End If
+    Dim i As Integer, dt As Date, strSQL As String, rsBar As Recordset, rsPre As Recordset, intR As Integer, dtD_f As Date, dtH_l As Date, rsVac As Recordset, intVacaciones As Integer
+    Dim strTareasTodos As String, strTareasOtros As String, strLD As String, strHorarioBase As String, intTipoHorario As Integer, intSemana As Integer, strDHAnt As String, intNoche As Integer, intMaxExtra As Integer, strXML As String
+    strSQL = "SELECT IdBarm, Barman, HorarioBase, TareasBase"
+    strSQL = strSQL & " FROM tbBarm"
+    strSQL = strSQL & " WHERE Not Baja"
+    If lngIdBarm <> 0 Then
+        strSQL = strSQL & " AND IdBarm = " & lngIdBarm
+    End If
+    intMaxExtra = Nz(DameValorParam("MaximoMinutosAnteExtra"), 0)
+    Set rsBar = CurrentDb.OpenRecordset(strSQL, dbOpenSnapshot)
+    strSQL = "SELECT * FROM tbBarmVacaciones WHERE Fecha Between " & CLng(dtLunes) & " AND " & CLng(dtLunes + 6) & IIf(lngIdBarm <> 0, " AND IdBarm = " & lngIdBarm, "")
+    Set rsVac = CurrentDb.OpenRecordset(strSQL, dbOpenSnapshot)
+    strSQL = "SELECT * FROM tbPresenciaBarm WHERE Fecha Between " & CLng(dtLunes) & " AND " & CLng(dtLunes + 6) & IIf(lngIdBarm <> 0, " AND IdBarm = " & lngIdBarm, "")
+    Set rsPre = CurrentDb.OpenRecordset(strSQL, dbOpenDynaset)
+    While Not rsBar.EOF
+        strHorarioBase = rsBar("HorarioBase")
+        'Si el tipo de horario es de ciclo de varias semanas, mira cual se aplicó la semana anterior y aplica la siguiente del ciclo
+        intTipoHorario = Nz(DimeXML(strHorarioBase, "TipoHorario"), 1)
+        If intTipoHorario > 1 Then
+            strDHAnt = Nz(DLookup("DH", "tbPresenciaBarm", "IdBarm = " & rsBar("IdBarm") & " AND Fecha = " & CLng(dtLunes - 7)), "")
+            intSemana = Nz(DimeXML(strDHAnt, "Semana"), 0) + 1
+            If intSemana > intTipoHorario Then intSemana = 1
+            strHorarioBase = Nz(DimeXML(strHorarioBase, "Semana_" & intSemana), "")
+        Else
+            intSemana = 0
+        End If
+        strTareasTodos = Nz(DimeXML(Nz(rsBar("TareasBase"), ""), "Todos"), "")
+        If strTareasTodos <> "" Then strTareasTodos = strTareasTodos & vbCrLf
+        If intOtros Then strTareasOtros = Nz(DimeXML(Nz(rsBar("TareasBase"), ""), "Otros"), "")
+        For i = 1 To 7
+            If intDia <> 0 And i <> intDia Then GoTo SiguienteDia
+            dt = dtLunes + i - 1
+            rsPre.FindFirst "IdBarm = " & rsBar("IdBarm") & " AND Fecha = " & CLng(dt)
+            If rsPre.NoMatch Then
+                rsPre.AddNew
+                rsPre("IdBarm") = rsBar("IdBarm")
+                rsPre("Fecha") = dt
+            Else
+                If intModificar012 = 0 Then
+                    intR = MBox("¿Modificar horario/s existente/s?", vbQuestion + vbYesNo)
+                    intModificar012 = IIf(intR = vbYes, 1, 2)
+                End If
+                If intModificar012 = 1 Then
+                    rsPre.Edit
+                Else
+                    GoTo SiguienteBarm
+                End If
+            End If
+            rsVac.FindFirst "IdBarm = " & rsBar("IdBarm") & " AND Fecha = " & CLng(dt)
+            intVacaciones = Not rsVac.NoMatch
+            rsPre("Empleado") = rsBar("Barman") & IIf(intVacaciones, " *VACACIONES*", "")
+            strLD = LetraDia_1_7(i)
+            If intVacaciones Then
+                rsPre("DH") = "Vacaciones"
+            Else
+                rsPre("DH") = DimeXML(strHorarioBase, strLD)
+            End If
+            If rsPre("DH") = "" Then rsPre("DH") = Null
+            If intSemana > 0 Then
+                strXML = ""
+                PonXML strXML, "Semana", intSemana
+                rsPre("DH") = strXML & rsPre("DH")
+            End If
+            rsPre("HorarioMinutos") = DimeDHMinutos(Nz(rsPre("DH"), ""), dtD_f, dtH_l, False)
+            rsPre("HorarioDesde") = dtD_f
+            rsPre("HorarioHasta") = dtH_l
+            rsPre("HorarioNoche") = DimeDHMinutos(Nz(rsPre("DH"), ""), , , True)
+            If intMaxExtra > 0 Then
+                If rsPre("HorarioMinutos") > intMaxExtra Then
+                    rsPre("HorarioExtra") = rsPre("HorarioMinutos") - intMaxExtra
+                Else
+                    rsPre("HorarioExtra") = 0
+                End If
+            End If
+            If intVacaciones Then
+                rsPre("Tareas") = "Vacaciones"
+            Else
+                rsPre("Tareas") = strTareasTodos & Nz(DimeXML(Nz(rsBar("TareasBase"), ""), strLD), "") & IIf(intOtros, vbCrLf & strTareasOtros, "")
+                rsPre("Tareas") = IIf(rsPre("Tareas") = "", Null, rsPre("Tareas"))
+            End If
+            rsPre.Update
+SiguienteDia:
+        Next i
+SiguienteBarm:
+            rsBar.MoveNext
+        Wend
+        
+    
+Salir_GenerarHorarioSemana:
+    Exit Function
+Error_GenerarHorarioSemana:
+    Select Case Err
+        Case Else
+            MBox "error nº " & Err & " en GenerarHorarioSemana" & vbCrLf & Err.Description
+            Resume Salir_GenerarHorarioSemana
+    End Select
+    
+
+End Function
+
+Public Function DimeDHMinutos(strDH As String, Optional ByRef vdtD_first As Variant, Optional ByRef vdtH_last As Variant, Optional intNocturnidad As Integer = False) As Long
+    On Error GoTo Error_DimeDHMinutos
+    Dim dtD As Date, dtH As Date, lngNN As Long, i As Integer, strX As String
+    Dim dtND As Date, dtNH As Date, dtCambio As Date
+'    vdtD_first = Null: vdtH_last = Null
+    If intNocturnidad Then
+        dtND = CDate(Nz(DameValorParam("NocturnidadDesde"), -2))
+        dtNH = CDate(Nz(DameValorParam("NocturnidadHasta"), -2))
+        dtCambio = CDate(Nz(DameValorParam("TicketsHoraCambioDia"), -2))
+    End If
+    i = 1
+VerDH:
+    strX = Nz(DimeXML(strDH, "d", , i), "")
+    If strX <> "" Then
+        dtD = CDate(strX)
+        If i = 1 Then vdtD_first = dtD
+        vdtH_last = 0
+        strX = Nz(DimeXML(strDH, "h", , i), "")
+            
+        If strX <> "" Then
+            dtH = CDate(strX)
+            If dtH < dtD Then If dtD < 1 Then dtH = 1 + dtH
+            If intNocturnidad And dtND <> -2 Then
+                If dtD < dtCambio Then
+                    dtD = dtD + 1
+                    If dtH < dtD Then dtH = 1 + dtH
+                End If
+                If dtD < dtND Then dtD = dtND
+                If dtH < dtND Then dtH = dtND
+                If dtNH < dtCambio Then dtNH = 1 + dtNH
+                If dtH > dtNH Then dtH = dtNH
+            End If
+            lngNN = lngNN + DateDiff("n", dtD, dtH)
+            vdtH_last = dtH
+        End If
+        i = i + 1
+        GoTo VerDH
+    End If
+    DimeDHMinutos = lngNN
+Salir_DimeDHMinutos:
+    Exit Function
+Error_DimeDHMinutos:
+    Select Case Err
+        Case Else
+            MBox "Error nº " & Err & " en DimeDHMinutos" & vbCrLf & Err.Description
+            Resume Salir_DimeDHMinutos
+    End Select
+    
+End Function
+
+Public Function DimeDH_XML(strDH As String, Optional strTitulo As String = "") As Variant
+    On Error GoTo Error_DimeDH_XML
+    CurrentDb.Execute "DELETE * FROM auxDH", dbFailOnError
+    Dim i As Integer, strD As String, strH As String, rs As Recordset, strXML As String
+    Set rs = CurrentDb.OpenRecordset("auxDH", dbOpenDynaset)
+Bucle:
+    i = i + 1
+    strD = Nz(DimeXML(strDH, "d", , i), "")
+    If strD <> "" Then
+        rs.AddNew
+        rs("Desde") = CDate(strD)
+        strH = Nz(DimeXML(strDH, "h", , i), "")
+        If strH <> "" Then rs("Hasta") = CDate(strH)
+        rs.Update
+        GoTo Bucle
+    End If
+    Set rs = Nothing
+    PonXML strXML, "Titulo", strTitulo
+    DoCmd.OpenForm "frmHorario", , , , , acDialog, strXML
+    If IsOpenForm("frmHorario") Then
+        strXML = ""
+        DoCmd.Close acForm, "frmHorario"
+        Set rs = CurrentDb.OpenRecordset("auxDH", dbOpenSnapshot)
+        While Not rs.EOF
+            PonXML strXML, "d", Format(rs("Desde"), "HH:NN")
+            PonXML strXML, "h", Format(rs("Hasta"), "HH:NN")
+            rs.MoveNext
+        Wend
+        DimeDH_XML = strXML
+    Else
+        DimeDH_XML = Null
+    End If
+Salir_DimeDH_XML:
+    Exit Function
+Error_DimeDH_XML:
+    Select Case Err
+        Case Else
+            MBox "error nº " & Err & " en DimeDH_XML" & vbCrLf & Err.Description
+            Resume Salir_DimeDH_XML
+    End Select
+
+End Function
+
+Public Sub PonHorarioSemana(dtLunes As Date, Optional lngIdBarmGrup As Long = 0)
+    On Error GoTo Error_PonHorarioSemana
+    Dim strSQL As String, rs As Recordset, rsAux As Recordset, strXML As String
+    strSQL = "SELECT tbPresenciaBarm.IdBarm, Empleado, tbPresenciaBarm.Fecha, DH, HorarioMinutos, Tareas  "
+    strSQL = strSQL & " FROM tbPresenciaBarM LEFT JOIN tbBarm ON tbPresenciaBarm.IdBarm = tbBarm.IdBarm"
+    strSQL = strSQL & " WHERE tbPresenciaBarm.Fecha >= #" & Format(dtLunes, "mm/dd/yyyy") & "# AND tbPresenciaBarm.Fecha <= #" & Format(dtLunes + 6, "mm/dd/yyyy") & "#"
+    If lngIdBarmGrup > 0 Then
+        strSQL = strSQL & " AND tbPresenciaBarm.IdBarm = " & lngIdBarmGrup
+    ElseIf lngIdBarmGrup < 0 Then
+        CurrentDb.Execute "UPDATE tbBarm SET MarcarSN = Nz([Grupo],'')='" & Nz(DLookup("Grupo", "qryGruposBarm", "IdGrup = " & lngIdBarmGrup), "") & "'", dbFailOnError
+        strSQL = strSQL & " AND tbBarm.MarcarSN = True"
+    End If
+    strSQL = strSQL & " ORDER BY tbBarm.Barman, tbPresenciaBarm.Fecha"
+    Set rs = CurrentDb.OpenRecordset(strSQL, dbOpenSnapshot)
+    CurrentDb.Execute "DELETE * FROM auxHorarioSemana", dbFailOnError
+    Set rsAux = CurrentDb.OpenRecordset("auxHorarioSemana", dbOpenDynaset)
+    While Not rs.EOF
+        rsAux.FindFirst "IdBarm = " & rs("IdBarm")
+        If rsAux.NoMatch Then
+            rsAux.AddNew
+            rsAux("IdBarm") = rs("IdBarm")
+            rsAux("Empleado") = rs("Empleado")
+        Else
+            rsAux.Edit
+        End If
+        
+        strXML = Nz(rsAux("Horario"), "")
+        PonXML strXML, Format(rs("Fecha"), "dd/mm/yyyy"), DimeHorarioDia(Nz(rs("DH"), ""), True) '& vbCrLf & Minutos_a_Horas(rs("HorarioMinutos"))
+        rsAux("Horario") = strXML
+        strXML = Nz(rsAux("Tareas"), "")
+        PonXML strXML, Format(rs("Fecha"), "dd/mm/yyyy"), rs("Tareas")
+        rsAux("Tareas") = strXML
+        rsAux.Update
+        rs.MoveNext
+    Wend
+Salir_PonHorarioSemana:
+    Exit Sub
+Error_PonHorarioSemana:
+    Select Case Err
+        Case Else
+            MBox "error nº " & Err & " en PonHorarioSemana" & vbCrLf & Err.Description
+            Resume Salir_PonHorarioSemana
+    End Select
+
+
+End Sub
+
+
+Public Sub Accesos_a_Presencia() 'Al cerrar caja se generan registros de presencia de empleados/as
+    On Error GoTo Error_Accesos_a_Presencia
+    Dim strSQL As String, rsA As Recordset, rsP As Recordset
+    strSQL = "SELECT tbBarm.IdBarm, Barman, tbAccesos.Fecha, Min(tbAccesos.Hora) AS HoraMin, Max(tbAccesos.Hora) AS HoraMax"
+    strSQL = strSQL & " FROM tbAccesos INNER JOIN tbBarm ON tbAccesos.CodBarm=tbBarm.CodBarman"
+    strSQL = strSQL & " GROUP BY IdBarm, Barman, tbAccesos.Fecha;"
+    Set rsA = CurrentDb.OpenRecordset(strSQL, dbOpenSnapshot)
+    While Not rsA.EOF
+        strSQL = "SELECT * FROM tbPresenciaBarm"
+        strSQL = strSQL & " WHERE IdBarm = " & rsA("IdBarm")
+        strSQL = strSQL & " AND Fecha=" & CLng(rsA("Fecha"))
+        Set rsP = CurrentDb.OpenRecordset(strSQL, dbOpenDynaset)
+        
+        If rsP.EOF Then
+            rsP.AddNew
+            rsP("IdBarm") = rsA("IdBarm")
+            rsP("Empleado") = rsA("Barman")
+            rsP("Fecha") = rsA("Fecha")
+            rsP("Entra") = rsA("HoraMin")
+            rsP("Sale") = rsA("HoraMax")
+            rsP("Tiempo") = DateDiff("n", rsP("Entra"), rsP("Sale"))
+            rsP.Update
+        Else
+            rsP.MoveFirst
+            If rsA("HoraMin") < rsP("Entra") Then
+                rsP.Edit
+                rsP("Entra") = rsA("HoraMin") - Int(rsA("HoraMin"))
+                rsP("Tiempo") = DateDiff("n", rsP("Entra"), rsP("Sale"))
+                rsP.Update
+            End If
+            rsP.MoveLast
+            If rsA("HoraMax") > rsP("Sale") Or Nz(rsP("Sale"), 0) = 0 Then
+                rsP.Edit
+                rsP("Sale") = rsA("HoraMax") - Int(rsA("HoraMax"))
+                rsP("Tiempo") = DateDiff("n", rsP("Entra"), rsP("Sale"))
+                rsP.Update
+            End If
+        End If
+        rsA.MoveNext
+    Wend
+Salir_Accesos_a_Presencia:
+    Exit Sub
+Error_Accesos_a_Presencia:
+    Select Case Err
+        Case Else
+            MBox "error nº " & Err & " en Accesos_a_Presencia" & vbCrLf & Err.Description
+            Resume Salir_Accesos_a_Presencia
+    End Select
+    
+
+End Sub
+
+Public Sub GeneraPresencia(lngIdBarm As Long, Optional intReemplazar As Integer = -2)
+    On Error GoTo Error_GeneraPresencia
+    
+    Dim dtD As Date, dtH As Date, intR As Integer, strHorarioBase As String, strSQL As String, rs As Recordset, dt As Date, intMargenES As Integer
+    dtD = Nz(adhDoCalendar(DameValorParam("PresenciaDesde"), 1), 0)
+    If dtD = 0 Then Exit Sub
+    PonValorParam "PresenciaDesde", dtD, 8
+    dtH = Nz(adhDoCalendar(DameValorParam("PresenciaHasta"), 1), 0)
+    If dtH = 0 Then Exit Sub
+    PonValorParam "PresenciaHasta", dtH, 8
+    strHorarioBase = Nz(DLookup("HorarioBase", "tbBarm", "IdBarm = " & lngIdBarm), "")
+    If strHorarioBase = "" Then
+        MBox "No se ha definido horario base del empleado", vbExclamation
+        Exit Sub
+    End If
+    intR = MBox("¿Generar Presencia de " & DLookup("Barman", "tbBarm", "IdBarm = " & lngIdBarm) & ", desde el " & Format(dtD, "dd/mm/yyyy") & " hasta el " & Format(dtH, "dd/mm/yyyy") & "?", vbOKCancel)
+    If intR <> vbOK Then Exit Sub
+    If intReemplazar = -2 Then
+        intR = MBox("¿Reemplazar datos existentes?", vbYesNoCancel)
+        If intR = vbCancel Then Exit Sub
+        If intR = vbYes Then
+            intReemplazar = True
+        Else
+            intReemplazar = False
+        End If
+    End If
+    strSQL = "SELECT * FROM tbPresenciaBarm"
+    strSQL = strSQL & " WHERE IdBarm = " & lngIdBarm
+    strSQL = strSQL & " AND Fecha >= " & CLng(dtD)
+    strSQL = strSQL & " AND Fecha <= " & CLng(dtH)
+    Set rs = CurrentDb.OpenRecordset(strSQL, dbOpenDynaset)
+    Dim i As Integer, j As Integer
+    j = dtH - dtD + 1
+    Randomize
+    intMargenES = Int((15 * Rnd) + 1)
+    For dt = dtD To dtH
+        DoEvents
+        If Int((3 * Rnd) + 1) = 2 Then intMargenES = Int((15 * Rnd) + 1)
+        GPDia lngIdBarm, strHorarioBase, dt, rs, intMargenES, intReemplazar
+        i = i + 1
+        SysCmd acSysCmdSetStatus, "Generando Presencia " & i & "/" & j
+    Next dt
+    MBox "Genera Presencia " & lngIdBarm
+    intR = MBox("¿Borrar presencia en fechas anteriores a " & Format(dtD, "dd/mm/yyyy") & "?", vbOKCancel + vbQuestion)
+    If intR = vbOK Then CurrentDb.Execute "DELETE * FROM tbPresenciaBarm WHERE IdBarm = " & lngIdBarm & " AND Fecha < " & CLng(dtD), dbFailOnError
+    intR = MBox("¿Borrar presencia en fechas posteriores a " & Format(dtH, "dd/mm/yyyy") & "?", vbOKCancel + vbQuestion)
+    If intR = vbOK Then CurrentDb.Execute "DELETE * FROM tbPresenciaBarm WHERE IdBarm = " & lngIdBarm & " AND Fecha > " & CLng(dtH), dbFailOnError
+    intR = MBox("¿Borrar presencia en Días con Tiempo = 0 ?", vbOKCancel + vbQuestion)
+    If intR = vbOK Then CurrentDb.Execute "DELETE * FROM tbPresenciaBarm WHERE IdBarm = " & lngIdBarm & " AND Tiempo = 0 ", dbFailOnError
+    
+    SysCmd acSysCmdClearStatus
+Salir_GeneraPresencia:
+    Exit Sub
+Error_GeneraPresencia:
+    Select Case Err
+        Case Else
+            MBox "Error nº " & Err & " en GeneraPresencia" & vbCrLf & Err.Description
+            Resume Salir_GeneraPresencia
+    End Select
+End Sub
+
+Private Sub GPDia(lngIdBarm As Long, strHorarioBase As String, dt As Date, rs As Recordset, intMargenES As Integer, Optional intReemplazar As Integer = False)
+    On Error GoTo Error_GPDia
+    Dim strBarm As String, dtHoraD As Date, dtHoraH As Date, strDH As String, lngMinutos, dtDf As Date, dtHl As Date, strES As String
+    strBarm = Nz(DLookup("Barman", "tbBarm", "IdBarm = " & lngIdBarm), "")
+    rs.FindFirst "Fecha = " & CLng(dt)
+    If rs.NoMatch Then
+        rs.AddNew
+        rs("IdBarm") = lngIdBarm
+        rs("Empleado") = DLookup("Barman", "tbBarm", "IdBarm = " & lngIdBarm)
+        rs("Fecha") = dt
+    Else
+        rs.Edit
+        If rs("Empleado") <> strBarm Then
+'            mbox "Atención no coincide empleado:" & vbCrLf _
+                    & "IdBarm = " & lngIdBarm & vbCrLf _
+                    & rs("Empleado") & " <> " & strBarm, vbExclamation
+            rs("Empleado") = rs("Empleado") & "-" & strBarm
+        End If
+    End If
+    strDH = Nz(DimeXML(strHorarioBase, DiaD(dt)), "")
+    rs("DH") = IIf(strDH = "", Null, strDH)
+    lngMinutos = DimeDHMinutos(strDH, dtDf, dtHl)
+    rs("HorarioDesde") = dtDf
+    rs("HorarioHasta") = dtHl
+    rs("HorarioMinutos") = lngMinutos
+    If rs("Tiempo") = 0 Or rs("Tiempo") > 1000000 Or intReemplazar Then
+        strES = RandomDH(strDH, intMargenES)
+        rs("ES") = IIf(strES = "", Null, strES)
+        lngMinutos = DimeDHMinutos(strES, dtDf, dtHl)
+        rs("Entra") = dtDf
+        rs("Sale") = dtHl
+        rs("Tiempo") = lngMinutos
+    End If
+    
+    rs.Update
+    
+Salir_GPDia:
+    Exit Sub
+Error_GPDia:
+    Select Case Err
+        Case Else
+            MBox "Error nº " & Err & " en GPDia" & vbCrLf & Err.Description
+            Resume Salir_GPDia
+    End Select
+End Sub
+
+
+Public Function RandomDH(strDH As String, intMargenES As Integer) As String
+    On Error GoTo Error_RandomDH
+    Dim dtD As Date, dtH As Date, i As Integer, strX As String
+    Dim strRxml As String, dtR As Date
+    Randomize
+    i = 1
+VerDH:
+    strX = Nz(DimeXML(strDH, "d", , i), "")
+    If strX <> "" Then
+        dtD = CDate(strX)
+        dtR = DateAdd("n", Int((intMargenES * Rnd) + 1) - (intMargenES \ 2), dtD)
+        PonXML strRxml, "d", Format(dtR, "HH:NN")
+        strX = Nz(DimeXML(strDH, "h", , i), "")
+            
+        If strX <> "" Then
+            dtH = CDate(strX)
+            If dtH < dtD Then If dtD < 1 Then dtH = 1 + dtH
+            dtR = DateAdd("n", Int((intMargenES * Rnd) + 1) - (intMargenES \ 2), dtH)
+            PonXML strRxml, "h", Format(dtR, "HH:NN")
+        End If
+        i = i + 1
+        GoTo VerDH
+    End If
+    RandomDH = strRxml
+Salir_RandomDH:
+    Exit Function
+Error_RandomDH:
+    Select Case Err
+        Case Else
+            MBox "Error nº " & Err & " en RandomDH" & vbCrLf & Err.Description
+            Resume Salir_RandomDH
+    End Select
+    
+End Function
+
+
+Public Sub FichaSalidaPresencia(Optional lIdBarm As Long = 0)
+    On Error GoTo HandleError
+    Dim rs As Recordset, sSQL As String
+    'sSQL = " SELECT * FROM tbPresenciaBarm" & _
+
+    
+    'If lIdBarm <> 0 Then
+HandleExit:
+    Exit Sub
+HandleError:
+    MBox Err.Description
+    Resume HandleExit
+End Sub
+
+Public Function RevisaPresencia(lngIdPresenciaBarm As Long, ByRef intModificadoSN As Boolean) As Integer
+    On Error GoTo HandleError
+    Dim rs As Recordset, lngMM As Long, vdtD As Variant, vdtH As Variant
+    Set rs = CurrentDb.OpenRecordset("SELECT * FROM tbPresenciaBarm WHERE IdPresenciaBarm = " & lngIdPresenciaBarm, dbOpenDynaset)
+    If rs.EOF Then GoTo HandleExit
+    lngMM = DimeDHMinutos(Nz(rs("ES"), ""), vdtD, vdtH)
+    If lngMM <> rs("Tiempo") Then
+        rs.Edit
+        rs("Tiempo") = lngMM
+        If IsDate(vdtD) Then rs("Entra") = vdtD
+        If IsDate(vdtH) Then rs("Sale") = vdtH
+        rs.Update
+        intModificadoSN = True
+    End If
+    RevisaPresencia = True
+HandleExit:
+    Exit Function
+HandleError:
+    MBox Err.Description
+    Resume HandleExit
+End Function
+
+
+Public Sub RevisaPresenciaPlus(Optional dtD As Date = 0, Optional dtH As Date = 0, Optional lngIdBarm As Long = 0, Optional intMensaje As Integer = True)
+    On Error GoTo HandleError
+    Dim strSQL As String, rs As Recordset
+    Dim intOK As Integer, intFail As Integer, intModif As Integer, intModifSN As Boolean, y As Long, z As Long
+    Dim intOkDia As Integer, dtAntDia As Date, sTitle As String
+    strSQL = "SELECT IdPresenciaBarm, Fecha"
+    strSQL = strSQL & " FROM tbPresenciaBarm"
+    strSQL = strSQL & " WHERE True"
+    sTitle = "Revisando Presencia "
+    If dtD <> 0 Then
+        strSQL = strSQL & " AND Fecha>= " & CLng(dtD)
+        sTitle = sTitle & " desde " & Format(dtD, "dd mmm yy")
+    End If
+    If dtH <> 0 Then
+        strSQL = strSQL & " AND Fecha<= " & CLng(dtH)
+        sTitle = sTitle & " hasta " & Format(dtH, "dd mmm yy")
+    End If
+    If lngIdBarm <> 0 Then strSQL = strSQL & " AND IdBarm= " & lngIdBarm
+    strSQL = strSQL & " ORDER BY Fecha"
+    Set rs = CurrentDb.OpenRecordset(strSQL, dbOpenSnapshot)
+    If Not rs.EOF Then
+        rs.MoveLast
+        rs.MoveFirst
+    End If
+    z = rs.RecordCount
+    While Not rs.EOF
+        DoEvents
+        If dtAntDia <> rs("Fecha") Then
+            If intOkDia Then PonPresenciaOK dtAntDia, True
+            dtAntDia = rs("Fecha")
+            intOkDia = True
+        End If
+        If RevisaPresencia(rs("IdPresenciaBarm"), intModifSN) = True Then
+            intOK = intOK + 1
+            If intModifSN Then intModif = intModif + 1
+        Else
+            intOkDia = False
+            intFail = intFail + 1
+        End If
+        rs.MoveNext
+        y = y + 1
+        SysCmd acSysCmdSetStatus, "Revisando Presencia: " & y & " / " & z & ", " & intModif & " modificados"
+        If intMensaje Then MensajeBusyBox "Revisando Presencia: " & y & " / " & z & ", " & intModif & " modificados", sTitle
+    Wend
+    If dtAntDia <> 0 Then If intOkDia Then PonPresenciaOK dtAntDia, True
+    SysCmd acSysCmdClearStatus
+    If intMensaje Then MensajeBusyBox "Revisada Presencia: " & y & " / " & z & ", " & intModif & " modificados", sTitle, True
+HandleExit:
+    SysCmd acSysCmdClearStatus
+    Exit Sub
+HandleError:
+    MBox Err.Description
+    
+    Resume HandleExit
+End Sub
+
+'Private Sub popo1()
+'    RevisaPresenciaPlus #2/28/2018#, #2/28/2018#, 0
+'End Sub
+
+Public Sub PonPresenciaOK(dt As Date, intOK As Integer)
+    On Error GoTo HandleError
+    Dim rs As Recordset
+    Set rs = CurrentDb.OpenRecordset("SELECT * FROM tbPresenciaOK WHERE Fecha = " & CLng(dt), dbOpenDynaset)
+    If rs.EOF Then
+        rs.AddNew
+        rs("Fecha") = dt
+    Else
+        rs.Edit
+    End If
+    rs("RevisadaSN") = intOK
+    rs.Update
+HandleExit:
+    Exit Sub
+HandleError:
+    MBox Err.Description
+    Resume HandleExit
+End Sub
+
+Public Function CompruebaPresenciaOK(dtD As Date, dtH As Date, intForzarRevision As Integer) As Integer
+    On Error GoTo HandleError
+    Dim dt As Date, intOK As Integer, intR As Integer
+    intOK = True
+    For dt = dtD To dtH
+        'Sólo debe comprobar si se han revisado las fechas en las que existe algún registro en tbPresenciaBarm
+        'para no dar falsos errores de revisión
+        If Nz(DLookup("IdPresenciaBarm", "tbPresenciaBarm", "Fecha = " & CLng(dt)), 0) > 0 Then
+            intR = Nz(DLookup("RevisadaSN", "tbPresenciaOK", "Fecha = " & CLng(dt)), False)
+            If Not intR And intForzarRevision Then
+                RevisaPresenciaPlus dt, dt, , False
+                intR = Nz(DLookup("RevisadaSN", "tbPresenciaOK", "Fecha = " & CLng(dt)), False)
+            End If
+            intOK = intOK And intR
+        End If
+    Next dt
+    CompruebaPresenciaOK = intOK
+HandleExit:
+    Exit Function
+HandleError:
+    MBox Err.Description
+    Resume HandleExit
+End Function
+
+Public Function UpdatePresenciaBarm(intAño As Integer, Optional intMes As Integer = 0, Optional lngIdBarm As Long = 0, Optional lngIdPresenciaBarm As Long = 0) As Integer
+    On Error GoTo HandleError
+    Dim vdtD As Variant, vdtH As Variant, intMaxExtra As Integer, rs As Recordset, strSQL As String
+    Dim lngTiempo As Long, lngTiempoNoche, lngTiempoExtra As Long, i As Integer
+    Dim lngHorarioMinutos As Long, lngHorarioNoche, lngHorarioExtra As Long
+    strSQL = "SELECT * FROM tbPresenciaBarm WHERE " & IIf(intAño <> 0, " Year(Fecha) = " & intAño, "True")
+    If intMes <> 0 Then strSQL = strSQL & " AND Month(Fecha) = " & intMes
+    If lngIdBarm <> 0 Then strSQL = strSQL & " AND IdBarm = " & lngIdBarm
+    If lngIdPresenciaBarm <> 0 Then strSQL = strSQL & " AND IdPresenciaBarm = " & lngIdPresenciaBarm
+    Set rs = CurrentDb.OpenRecordset(strSQL, dbOpenDynaset)
+    intMaxExtra = Nz(DameValorParam("MaximoMinutosAnteExtra"), 0)
+    Dim y As Long, z As Long
+    If Not rs.EOF Then
+        rs.MoveLast
+        rs.MoveFirst
+    End If
+    z = rs.RecordCount
+    DoCmd.Hourglass True
+    While Not rs.EOF
+        y = y + 1
+        SysCmd acSysCmdSetStatus, "Actualizando Presencia: " & y & "/" & z
+        rs.Edit
+        lngTiempo = DimeDHMinutos(Nz(rs("ES"), ""), vdtD, vdtH)
+        rs("Tiempo") = lngTiempo
+        If IsDate(vdtD) Then rs("Entra") = vdtD
+        If IsDate(vdtH) Then rs("Sale") = vdtH
+        lngTiempoNoche = DimeDHMinutos(Nz(rs("ES"), ""), vdtD, vdtH, True)
+        rs("TiempoNoche") = lngTiempoNoche
+        If intMaxExtra > 0 Then
+            If lngTiempo > intMaxExtra Then
+                rs("TiempoExtra") = lngTiempo - intMaxExtra
+            Else
+                rs("TiempoExtra") = 0
+            End If
+        End If
+        lngHorarioMinutos = DimeDHMinutos(Nz(rs("DH"), ""), vdtD, vdtH)
+        rs("HorarioMinutos") = lngHorarioMinutos
+        If IsDate(vdtD) Then rs("HorarioDesde") = vdtD
+        If IsDate(vdtH) Then rs("HorarioHasta") = vdtH
+        lngHorarioNoche = DimeDHMinutos(Nz(rs("DH"), ""), vdtD, vdtH, True)
+        rs("HorarioNoche") = lngHorarioNoche
+        If intMaxExtra > 0 Then
+            If lngHorarioMinutos > intMaxExtra Then
+                rs("HorarioExtra") = lngTiempo - intMaxExtra
+            Else
+                rs("HorarioExtra") = 0
+            End If
+        End If
+        rs.Update
+        i = i + 1
+        rs.MoveNext
+    Wend
+    SysCmd acSysCmdClearStatus
+HandleExit:
+    DoCmd.Hourglass False
+    UpdatePresenciaBarm = i
+    Exit Function
+HandleError:
+    MBox Err.Description
+    Resume HandleExit
+End Function
+
+
+Public Sub popo()
+    Dim i As Integer
+    i = UpdatePresenciaBarm(2020)
+    MBox "Se actualizaron " & i & " registros", vbInformation
+End Sub

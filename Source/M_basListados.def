@@ -1,0 +1,674 @@
+Option Compare Database
+Option Explicit
+    
+Public Function PrepararInforme(lngIdInforme As Long, dtD As Date, dtH As Date, Optional strHHd As String = "00:00", Optional strHHh As String = "23:59", _
+                                Optional lngIdPuesto As Long = 0, Optional lngIdBarm As Long = 0, Optional lngCodTipoTique As Long = -88, _
+                                Optional strCli As String = "", Optional strTSFA As String = "T", Optional lngIdSFA As Long = 0, _
+                                Optional strDiasSemana As String = "", Optional strGrupoBarm As String = "", Optional intInvitacionesSN As Integer = False) As Integer
+    On Error GoTo HandleError
+    Dim strSQL As String, rs As Recordset
+    strSQL = "SELECT * FROM sysInformes WHERE IdInforme = " & lngIdInforme
+    Set rs = CurrentDb.OpenRecordset(strSQL, dbOpenSnapshot)
+    If rs.EOF Then
+        MBox "No se encontró Informe Id = " & lngIdInforme, vbExclamation
+        GoTo HandleExit
+    End If
+    DoCmd.Hourglass True
+    If rs("auxRegVen_ActuSN") = True Then
+        If lngCodTipoTique = -88 Then lngCodTipoTique = Nz(DameValorParam("ListadosCodTipTickPredeterminado"), -100)
+        Call ACTUALIZAR_auxRegistroVentas(dtD, dtH, strHHd, strHHh, lngIdPuesto, lngIdBarm, lngCodTipoTique, strCli, strTSFA, lngIdSFA, strDiasSemana, strGrupoBarm, intInvitacionesSN)
+        If DameValorParam("ListadoVentasConceptoSegun") = 1 And lngIdInforme = 2 Then
+            Dim strAgruparConceptos As String
+            strAgruparConceptos = Nz(DameValorParam("ListadoArticulosAgruparConceptos"), "")
+            If strAgruparConceptos <> "" Then AgruparConceptos_auxRegistroVentas strAgruparConceptos
+        End If
+    End If
+    If rs("auxLinBor_ActuSN") = True Then
+        Call ACTUALIZAR_auxLineasBorradas(dtD, dtH, strHHd, strHHh, lngIdBarm, lngIdPuesto)
+    End If
+    If rs("auxPreEmp_ActuSN") = True Then
+        Call ACTUALIZAR_auxPresenciaBarm(dtD, dtH, strHHd, strHHh, lngIdBarm, lngIdPuesto, True, strGrupoBarm)
+    End If
+    If rs("auxPagosCaja_ActuSN") = True Then
+        Call ACTUALIZAR_auxPagosCaja(dtD, dtH, lngIdPuesto)
+    End If
+    DoCmd.Hourglass False
+        
+HandleExit:
+    Exit Function
+HandleError:
+    MBox Err.Description
+    Resume HandleExit
+End Function
+    
+    
+    
+Public Sub PonCarpetasListados(Optional ByRef strCListados As String, Optional ByRef strCAdjuntos As String)
+    On Error GoTo Error_PonCarpetasListados
+    strCListados = Nz(DameValorParam("ListadosCarpeta"), "")
+VerCarpeta:
+    If strCListados = "" Then
+        strCListados = DirectorioDe(CurrentDb.Name) & "Listados"
+        PonValorParam "ListadosCarpeta", strCListados, 10
+    End If
+    If Dir(strCListados, vbDirectory) = "" Then MkDir strCListados
+    If right(strCListados, 1) <> "\" Then strCListados = strCListados & "\"
+    strCAdjuntos = strCListados & "Adjuntos"
+    If Dir(strCAdjuntos, vbDirectory) = "" Then MkDir strCAdjuntos
+    strCAdjuntos = strCAdjuntos & "\"
+    PonValorParam "ListadosCarpetaAdjuntos", strCAdjuntos, 10
+Salir_PonCarpetasListados:
+    Exit Sub
+Error_PonCarpetasListados:
+    Select Case Err
+        Case 52 'no se puede crear la carpeta
+            strCListados = ""
+            Resume VerCarpeta
+        Case Else
+            MBox "Error nº " & Err & " en PonCarpetasListados" & vbCrLf & Err.Description
+            Resume Salir_PonCarpetasListados
+    End Select
+End Sub
+
+
+Public Sub ArreglarComensales()
+    On Error GoTo Error_ArreglarComensales
+    Dim rs As Recordset, strSQL As String
+    strSQL = "UPDATE auxRegistroVentas SET Linea = DimeLin(AutoNum)" ' ORDER BY AutoNum, Linea"
+    CurrentDb.Execute strSQL, dbFailOnError
+    strSQL = "UPDATE auxRegistroVentas SET Comensales=Comensales * Iif(Linea=1,1,0)" ' ORDER BY AutoNum, Linea"
+    CurrentDb.Execute strSQL, dbFailOnError
+    
+Salir_ArreglarComensales:
+    Exit Sub
+Error_ArreglarComensales:
+    Select Case Err
+        Case Else
+            MBox "Error nº " & Err & " en ArreglarComensales" & vbCrLf & Err.Description
+            Resume Salir_ArreglarComensales
+    End Select
+
+End Sub
+
+
+Public Function DimePivot_TramoDH() As String
+    On Error GoTo HandleError
+    Dim strR As String, rs As Recordset
+    strR = strR & " PIVOT TramoDH In ("
+    Set rs = CurrentDb.OpenRecordset("cfgDiaHoraTramos", dbOpenSnapshot)
+    While Not rs.EOF
+        strR = strR & "'" & rs("TramoDiaHora") & "', "
+        rs.MoveNext
+    Wend
+    strR = strR & "'Otros')"
+    DimePivot_TramoDH = strR
+    
+HandleExit:
+    Exit Function
+HandleError:
+    MBox Err.Description
+    Resume HandleExit
+End Function
+
+Public Function DimePivot_Horas(Optional intHoraIni As Integer = 7, Optional intHoraFin As Integer = 6, Optional intMediasHoras As Integer = False) As String
+    On Error GoTo HandleError
+    Dim strR As String, rs As Recordset, i As Integer, j As Integer, intSigue As Integer, intUlti As Integer
+    Dim dtI As Date, dtJ As Date, dtTramo As Date
+    If Not intMediasHoras Then
+        strR = " PIVOT Format([Hora],'hh') IN ("
+    Else
+        strR = " PIVOT HM_mod([Hora],48) IN ("
+    End If
+    i = intHoraIni 'CInt(Nz(Me.txtHoraIni, 6))
+    intSigue = True
+    j = intHoraFin 'CInt(Nz(Me.txtHoraFin, 2))
+    dtI = i / 24
+    dtJ = j / 24
+    If Not intMediasHoras Then
+        dtTramo = 1 / 24
+    Else
+        dtTramo = 1 / 48
+    End If
+    While intSigue
+        If CSng(dtI) >= 1 Then dtI = 0
+        strR = strR & "'" & Format(dtI, IIf(Not intMediasHoras, "HH", "HH:NN")) & "', "
+        dtI = dtI + dtTramo
+        If intUlti Then intSigue = False
+        If Format(dtI, IIf(Not intMediasHoras, "HH", "HH:NN")) = Format(dtJ, IIf(Not intMediasHoras, "HH", "HH:NN")) Then intUlti = True
+        DoEvents
+    Wend
+    strR = RecDerTop(strR, 2, 0) & ")"
+    DimePivot_Horas = strR
+    
+HandleExit:
+    Exit Function
+HandleError:
+    MBox Err.Description
+    Resume HandleExit
+End Function
+
+Public Sub Pon_qryRegistroVentas_Diario_X_IVAs_SQL(Optional intVerPuestos As Integer = True, _
+                                                    Optional intVerNumTique As Integer = True, _
+                                                    Optional intVerComensales As Integer = True)
+    Dim strSQL As String
+    strSQL = "TRANSFORM Sum(auxRegistroVentas.Base) AS SumaDeBase"
+    strSQL = strSQL & " SELECT auxRegistroVentas.Fecha AS Día"
+    If intVerPuestos Then 'Nz(Me.ListadosVentasEIngresosVerPuestos, True) = True Then
+        strSQL = strSQL & ", cfgPuestos.NombrePuesto AS Puesto"
+    Else
+        strSQL = strSQL & ", '-' AS Puesto"
+    End If
+    strSQL = strSQL & ", Min(auxRegistroVentas.NumFactura) AS [Desde nº Tique], Max(auxRegistroVentas.NumFactura) AS [Hasta nº Tique], Sum(auxRegistroVentas.Comensales) AS Comensales, Sum(auxRegistroVentas.Importe) AS [Total Día], Sum(auxRegistroVentas.Base) AS [Total Base], Sum([Base]*[IVA]) AS [Total IVA]"
+    strSQL = strSQL & " FROM auxRegistroVentas LEFT JOIN cfgPuestos ON auxRegistroVentas.IdPuesto=cfgPuestos.IdPuesto"
+    strSQL = strSQL & " GROUP BY auxRegistroVentas.Fecha"
+    If intVerPuestos Then strSQL = strSQL & ", cfgPuestos.NombrePuesto"
+    strSQL = strSQL & " ORDER BY auxRegistroVentas.Fecha"
+    strSQL = strSQL & " PIVOT Format([IVA],'percent');"
+    CurrentDb.QueryDefs("qryRegistroVentas_Diario_X_IVAs").SQL = strSQL
+    
+    strSQL = "TRANSFORM Sum(auxRegistroVentas_FormasPago.Importe) AS SumaDeImporte"
+    strSQL = strSQL & " SELECT auxRegistroVentas_FormasPago.Fecha AS [Fecha Caja]"
+    If intVerPuestos Then
+        strSQL = strSQL & ", cfgPuestos.NombrePuesto AS [Puesto Caja]"
+    Else
+        strSQL = strSQL & ", '-' AS [Puesto Caja]"
+    End If
+    strSQL = strSQL & ", Sum(auxRegistroVentas_FormasPago.Importe) AS [Total Caja], Sum(PendientePago) AS [Pendiente Pago]"
+    strSQL = strSQL & " FROM auxRegistroVentas_FormasPago LEFT JOIN cfgPuestos ON auxRegistroVentas_FormasPago.IdPuesto = cfgPuestos.IdPuesto"
+    strSQL = strSQL & " GROUP BY auxRegistroVentas_FormasPago.Fecha"
+    If intVerPuestos Then strSQL = strSQL & ", cfgPuestos.NombrePuesto"
+    strSQL = strSQL & " PIVOT auxRegistroVentas_FormasPago.FormaPago;"
+    CurrentDb.QueryDefs("qryRegistroVentas_Diario_FormasPago").SQL = strSQL
+    Dim strColumnas As String
+    strColumnas = "1" & IIf(intVerPuestos, "1", "0") & _
+                        IIf(intVerNumTique, "11", "00") & _
+                        IIf(intVerComensales, "1", "0") & "1" & _
+                        ",101215151212,211133,050101010408,000011"
+    strSQL = "UPDATE sysInformes SET Columnas = " & ConComillas(strColumnas) & _
+            " WHERE (IdInforme = 5 OR IdInforme = 51)"
+    CurrentDb.Execute strSQL, dbFailOnError
+End Sub
+
+
+Public Sub Pon_qryRegistroVentas_Diario_X_IVAs_SQL_Empresas_Resto(Optional intVerPuestos As Integer = True, _
+                                                    Optional intVerNumTique As Integer = True, _
+                                                    Optional intVerComensales As Integer = True)
+    On Error GoTo HandleError
+    Dim sSQL As String, vIVAs As Variant
+    Dim cIVA0 As Currency, sFPCli As String, sIVA0 As String, sIVA_X As String
+    Dim vFPs As Variant, i As Integer
+    
+    Pon_qryRegistroVentas_Diario_X_IVAs_SQL intVerPuestos, intVerNumTique, intVerComensales
+    
+    sSQL = "SELECT qryRegistroVentas_Diario_X_IVAs_FormasPago.Día AS Fecha, 0 AS [Nº Zeta]"
+    If intVerNumTique Then
+        sSQL = sSQL & ", qryRegistroVentas_Diario_X_IVAs_FormasPago.[Desde nº Tique], qryRegistroVentas_Diario_X_IVAs_FormasPago.[Hasta nº Tique]"
+    End If
+    
+    vIVAs = DimeIVAS
+    sIVA0 = Format(CCur(Replace(vIVAs(0), ".", ",")), "percent")
+    vFPs = DimeFPs
+    sFPCli = Nz(DLookup("Descripcion", "tbFPago", "CodFPago = """ & Nz(DameValorParam("TPV_FormaPagoClientes"), "") & """"), "")
+    If sFPCli = "" Then
+        MsgBox "no se ha asignado Forma de Pago de Cliente en parámetros", vbExclamation
+        GoTo HandleExit
+    End If
+    sSQL = sSQL & ", qryRegistroVentas_Diario_X_IVAs_FormasPago.[Total Día]" _
+            & ", qryRegistroVentas_Diario_X_IVAs_FormasPago." & sFPCli & " AS [Importe " & sFPCli & "], [" & sFPCli & "]/(1+" & vIVAs(0) & ") AS [" & sIVA0 & "_Base_" & sFPCli & "], [" & sFPCli & "]*" & vIVAs(0) & "/(1+" & vIVAs(0) & ") AS [" & sIVA0 & "_Cuota_IVA_" & sFPCli & "]" _
+            & ", [Total Día]-Nz([" & sFPCli & "],0) AS [Total Resto Clientes], [" & sIVA0 & "]-[" & sIVA0 & "_Base_" & sFPCli & "] AS [" & sIVA0 & "_Base_Resto], [" & sIVA0 & "_Base_Resto]*" & vIVAs(0) & " AS [" & sIVA0 & "_Cuota_IVA_Resto]"
+    If UBound(vIVAs) > 0 Then
+        For i = 1 To UBound(vIVAs)
+            sIVA_X = Format(CCur(Replace(vIVAs(i), ".", ",")), "percent")
+            sSQL = sSQL & ", qryRegistroVentas_Diario_X_IVAs_FormasPago.[" & sIVA_X & "] AS [" & sIVA_X & "_Base ], [" & sIVA_X & "]*" & vIVAs(i) & " AS [" & sIVA_X & "_Cuota_IVA]"
+        Next i
+    End If
+    
+    sSQL = sSQL & ", qryRegistroVentas_Diario_X_IVAs_FormasPago.[Pendiente Pago]"
+    For i = 1 To UBound(vFPs)
+        sSQL = sSQL & ", qryRegistroVentas_Diario_X_IVAs_FormasPago.[" & vFPs(i) & "]"
+    Next i
+    sSQL = sSQL & " FROM qryRegistroVentas_Diario_X_IVAs_FormasPago;"
+    
+    
+    CurrentDb.QueryDefs("qryRegistroVentas_Diario_X_IVAs_FormasPago_Empresas_Resto").SQL = sSQL
+    Dim strColumnas As String
+    strColumnas = "1" & IIf(intVerPuestos, "1", "0") & _
+                        IIf(intVerNumTique, "11", "00") & _
+                        IIf(intVerComensales, "1", "0") & "1" & _
+                        ",101215151212,211133,050101010408,000011"
+    sSQL = "UPDATE sysInformes SET Columnas = " & ConComillas(strColumnas) & _
+            " WHERE (IdInforme = 5 OR IdInforme = 51)"
+    CurrentDb.Execute sSQL, dbFailOnError
+    
+    
+HandleExit:
+    Exit Sub
+HandleError:
+    MsgBox Err.Description
+    Resume HandleExit
+End Sub
+
+Private Function DimeIVAS() As Variant
+    On Error GoTo HandleError
+    'Devuelve un array de IVAs existentes en auxRegistroVentas en orden de Importes descendente. Se supone que el primero es el IVA predeterminado
+    Dim sSQL As String, rs As Recordset, sIVAs As String, vIVAs As Variant
+    sSQL = "SELECT IVA, Sum(Importe)" _
+        & " FROM auxRegistroVentas" _
+        & " GROUP BY IVA" _
+        & " ORDER BY Sum(Importe) DESC"
+    Set rs = CurrentDb.OpenRecordset(sSQL, dbOpenSnapshot)
+    While Not rs.EOF
+        sIVAs = sIVAs & "," & ComaPunto(CCur(SpNz(rs("IVA"), "null")))
+        rs.MoveNext
+    Wend
+    If Len(sIVAs) > 1 Then sIVAs = Mid(sIVAs, 2)
+    vIVAs = Split(sIVAs, ",")
+    DimeIVAS = vIVAs
+    'Dim i As Integer
+    'For i = 0 To UBound(vIVAs)
+    '    Debug.Print vIVAs(i)
+    'Next i
+    
+    
+HandleExit:
+    Exit Function
+HandleError:
+    MsgBox Err.Description
+    Resume HandleExit
+End Function
+
+Private Function DimeFPs() As Variant
+    On Error GoTo HandleError
+    'Devuelve un array de IVAs existentes en auxRegistroVentas en orden de Importes descendente. Se supone que el primero es el IVA predeterminado
+    Dim sSQL As String, rs As Recordset, sFPs As String, vFPs As Variant
+    sSQL = "SELECT Distinct FormaPago" _
+        & " FROM auxRegistroVentas_FormasPago" _
+        & " ORDER BY FormaPago"
+    Set rs = CurrentDb.OpenRecordset(sSQL, dbOpenSnapshot)
+    While Not rs.EOF
+        sFPs = sFPs & "," & SpNz(rs("FormaPago"), "<>")
+        rs.MoveNext
+    Wend
+    If Len(sFPs) > 1 Then sFPs = Mid(sFPs, 2)
+    vFPs = Split(sFPs, ",")
+    DimeFPs = vFPs
+    'Dim i As Integer
+    'For i = 0 To UBound(vFPs)
+    '    Debug.Print vFPs(i)
+    'Next i
+    
+    
+HandleExit:
+    Exit Function
+HandleError:
+    MsgBox Err.Description
+    Resume HandleExit
+End Function
+
+
+Public Sub Pon_qryRegistroVentas_Mensual_X_IVAs_SQL(Optional intVerPuestos As Integer = True, _
+                                                    Optional intVerNumTique As Integer = True, _
+                                                    Optional intVerComensales As Integer = True)
+    Dim strSQL As String
+    strSQL = "TRANSFORM Sum(auxRegistroVentas.Base) AS SumaDeBase"
+    strSQL = strSQL & " SELECT Format(Fecha,'yyyy/mm') as Mes"
+    If intVerPuestos Then
+        strSQL = strSQL & ", cfgPuestos.NombrePuesto AS Puesto"
+    Else
+        strSQL = strSQL & ", '-' AS Puesto"
+    End If
+    strSQL = strSQL & ", Min(auxRegistroVentas.NumFactura) AS [Desde nº Tique], Max(auxRegistroVentas.NumFactura) AS [Hasta nº Tique], Sum(auxRegistroVentas.Comensales) AS Comensales, Sum(auxRegistroVentas.Importe) AS [Total Mes], Sum(auxRegistroVentas.Base) AS [Total Base], Sum([Base]*[IVA]) AS [Total IVA]"
+    strSQL = strSQL & " FROM auxRegistroVentas LEFT JOIN cfgPuestos ON auxRegistroVentas.IdPuesto=cfgPuestos.IdPuesto"
+    strSQL = strSQL & " GROUP BY Format(Fecha,'yyyy/mm')"
+    If intVerPuestos Then strSQL = strSQL & ", cfgPuestos.NombrePuesto"
+    strSQL = strSQL & " ORDER BY Format(Fecha,'yyyy/mm')"
+    strSQL = strSQL & " PIVOT Format([IVA],'0.00 %');"
+    CurrentDb.QueryDefs("qryRegistroVentas_Mensual_X_IVAs").SQL = strSQL
+    
+    strSQL = "TRANSFORM Sum(auxRegistroVentas_FormasPago.Importe) AS SumaDeImporte"
+    strSQL = strSQL & " SELECT Format(auxRegistroVentas_FormasPago.Fecha,'yyyy/mm')  AS [Mes Caja]"
+    If intVerPuestos Then
+        strSQL = strSQL & ", cfgPuestos.NombrePuesto AS [Puesto Caja]"
+    Else
+        strSQL = strSQL & ", '-' AS [Puesto Caja]"
+    End If
+    strSQL = strSQL & ", Sum(auxRegistroVentas_FormasPago.Importe) AS [Total Caja]"
+    strSQL = strSQL & " FROM auxRegistroVentas_FormasPago LEFT JOIN cfgPuestos ON auxRegistroVentas_FormasPago.IdPuesto = cfgPuestos.IdPuesto"
+    strSQL = strSQL & " GROUP BY Format(auxRegistroVentas_FormasPago.Fecha,'yyyy/mm')"
+    If intVerPuestos Then strSQL = strSQL & ", cfgPuestos.NombrePuesto"
+    strSQL = strSQL & " PIVOT auxRegistroVentas_FormasPago.FormaPago;"
+    CurrentDb.QueryDefs("qryRegistroVentas_Mensual_FormasPago").SQL = strSQL
+    Dim strColumnas As String
+    strColumnas = "1" & IIf(intVerPuestos, "1", "0") & _
+                        IIf(intVerNumTique, "11", "00") & _
+                        IIf(intVerComensales, "1", "0") & "1" & _
+                        ",101215151212,211133,090101010408,000011"
+    strSQL = "UPDATE sysInformes SET Columnas = " & ConComillas(strColumnas) & _
+            " WHERE (IdInforme = 5 OR IdInforme = 51)"
+    CurrentDb.Execute strSQL, dbFailOnError
+End Sub
+
+
+Public Function DameTit(strTit As String, intDM As Integer)
+    DameTit = Replace(strTit, "[D/M]", IIf(intDM = 1, "Diario", "Mensual"))
+End Function
+
+
+Public Function Pon_SQL(strPonSQL As String, intDM As Integer, intValPor As Integer, bolTramosHoras As Boolean, _
+                        Optional dtD_PagosCaja As Date, Optional dtH_PagosCaja As Date, _
+                        Optional lngIdBarm_PC As Long, Optional lngIdProveedor_PC As Long, _
+                        Optional ByRef strSQL_TOTAL As String, Optional strPagoCajaPBC As String = "123", _
+                        Optional intHoraIni As Integer = 7, Optional intHoraFin As Integer = 6) As Integer
+    On Error GoTo HandleError
+    Dim strSQL As String, iLin As Integer
+    Select Case DameTit(strPonSQL, intDM)
+        Case ""
+        Case "qryRegistroVentas_Diario_X_Familias_TOTAL"
+            strSQL_TOTAL = "qryRegistroVentas_Diario_X_Familias_TOTAL"
+        Case "qryRegistroVentas_Diario_X_IVAs_SQL"
+            If Nz(DameValorParam("ListadoVentasDiario_x_IVA_FP_Empresa_RestoSN"), False) = False Then
+                Call Pon_qryRegistroVentas_Diario_X_IVAs_SQL
+            Else
+                Call Pon_qryRegistroVentas_Diario_X_IVAs_SQL_Empresas_Resto
+            End If
+        Case "qryRegistroVentas_Mensual_X_IVAs_SQL"
+            Call Pon_qryRegistroVentas_Mensual_X_IVAs_SQL
+        Case "qryRegistroVentas_HorarioImportes"
+            If intValPor = 1 Then
+                strSQL = "TRANSFORM Sum(qryRegistroVentas_Tiques.[Total Tique]) AS [SumaDeTotal Tique1]"
+            Else
+                strSQL = "TRANSFORM Sum(qryRegistroVentas_Tiques.[Total Tique])/[Total " & IIf(intDM = 1, "día", "mes") & "] As prc"
+            End If
+            iLin = intValPor
+            strSQL = strSQL & " SELECT " & IIf(intDM = 1, "Fecha, Fecha_D([Fecha]) AS Día", "Format(Fecha,'yyyy/mm') AS Mes_AAMM, Format(Fecha,'mmm yy') AS Mes") & ", Sum(qryRegistroVentas_Tiques.[Total Tique]) AS [Total " & IIf(intDM = 1, "día", "mes") & "]"
+            strSQL = strSQL & " FROM qryRegistroVentas_Tiques"
+            strSQL = strSQL & " GROUP BY " & IIf(intDM = 1, "Fecha, Fecha_D([Fecha])", "Format(Fecha,'yyyy/mm'), Format(Fecha,'mmm yy')")
+            If bolTramosHoras = False Then
+                strSQL = strSQL & DimePivot_Horas(intHoraIni, intHoraFin, Nz(DameValorParam("TramosMediaHoraSN"), False))
+            Else
+                strSQL = strSQL & DimePivot_TramoDH
+            End If
+            If intValPor = 1 Then
+            Else
+                strSQL_TOTAL = "TRANSFORM Sum(qryRegistroVentas_Tiques.[Total Tique])/[Total] As prc"
+                strSQL_TOTAL = strSQL_TOTAL & " SELECT 'totales' AS TOTALES, Sum(qryRegistroVentas_Tiques.[Total Tique]) AS [Total]"
+                strSQL_TOTAL = strSQL_TOTAL & " FROM qryRegistroVentas_Tiques"
+                strSQL_TOTAL = strSQL_TOTAL & " GROUP BY 'totales'"
+                If bolTramosHoras = False Then
+                    strSQL_TOTAL = strSQL_TOTAL & DimePivot_Horas(intHoraIni, intHoraFin)
+                Else
+                    strSQL_TOTAL = strSQL_TOTAL & DimePivot_TramoDH
+                End If
+            End If
+            CurrentDb.QueryDefs("qryRegistroVentas_HorarioImportes").SQL = strSQL
+        Case "qryRegistroVentas_HorarioImportesPuesto"
+            If intValPor = 1 Then
+                strSQL = "TRANSFORM Sum(qryRegistroVentas_Tiques.[Total Tique]) AS [SumaDeTotal Tique1]"
+            Else
+                strSQL = "TRANSFORM Sum(qryRegistroVentas_Tiques.[Total Tique])/[Total " & IIf(intDM = 1, "día", "mes") & "] As prc"
+            End If
+            iLin = intValPor
+            strSQL = strSQL & " SELECT " & IIf(intDM = 1, "Fecha_D([Fecha]) AS Día", "Format(Fecha,'yyyy/mm') AS Mes") & ", Puesto, Sum(qryRegistroVentas_Tiques.[Total Tique]) AS [Total " & IIf(intDM = 1, "día", "mes") & "]"
+            strSQL = strSQL & " FROM qryRegistroVentas_Tiques"
+            strSQL = strSQL & " GROUP BY " & IIf(intDM = 1, "Fecha_D([Fecha])", "Format(Fecha,'yyyy/mm')") & ", Puesto"
+            If bolTramosHoras = False Then
+                strSQL = strSQL & DimePivot_Horas(intHoraIni, intHoraFin)
+            Else
+                strSQL = strSQL & DimePivot_TramoDH
+            End If
+            If intValPor = 1 Then
+            Else
+                strSQL_TOTAL = "TRANSFORM Sum(qryRegistroVentas_Tiques.[Total Tique])/[Total] As prc"
+                strSQL_TOTAL = strSQL_TOTAL & " SELECT 'totales' AS TOTALES, Sum(qryRegistroVentas_Tiques.[Total Tique]) AS [Total], '-' AS Puesto"
+                strSQL_TOTAL = strSQL_TOTAL & " FROM qryRegistroVentas_Tiques"
+                strSQL_TOTAL = strSQL_TOTAL & " GROUP BY 'totales'"
+                If bolTramosHoras = False Then
+                    strSQL_TOTAL = strSQL_TOTAL & DimePivot_Horas(intHoraIni, intHoraFin)
+                Else
+                    strSQL_TOTAL = strSQL_TOTAL & DimePivot_TramoDH
+                End If
+            End If
+            CurrentDb.QueryDefs("qryRegistroVentas_HorarioImportesPuesto").SQL = strSQL
+        Case "qryRegistroVentas_HorarioTiques"
+            If intValPor = 1 Then
+                strSQL = "TRANSFORM Count(qryRegistroVentas_Tiques.AutoNum) AS CuentaDeAutoNum"
+            Else
+                strSQL = "TRANSFORM Count(qryRegistroVentas_Tiques.AutoNum)/[Total " & IIf(intDM = 1, "día", "mes") & "] As prc"
+            End If
+            iLin = intValPor
+            strSQL = strSQL & " SELECT " & IIf(intDM = 1, "Fecha_D([Fecha]) AS Día", "Format(Fecha,'yyyy/mm') AS Mes") & ", Count(qryRegistroVentas_Tiques.AutoNum) AS [Total " & IIf(intDM = 1, "día", "mes") & "]"
+            strSQL = strSQL & " FROM qryRegistroVentas_Tiques"
+            strSQL = strSQL & " GROUP BY " & IIf(intDM = 1, "Fecha_D([Fecha])", "Format(Fecha,'yyyy/mm')")
+            If bolTramosHoras = False Then
+                strSQL = strSQL & DimePivot_Horas(intHoraIni, intHoraFin)
+            Else
+                strSQL = strSQL & DimePivot_TramoDH
+            End If
+            If intValPor = 1 Then
+            Else
+                strSQL_TOTAL = "TRANSFORM Count(qryRegistroVentas_Tiques.AutoNum)/[Total] As prc"
+                strSQL_TOTAL = strSQL_TOTAL & " SELECT 'totales' AS TOTALES, Count(qryRegistroVentas_Tiques.AutoNum) AS [Total]"
+                strSQL_TOTAL = strSQL_TOTAL & " FROM qryRegistroVentas_Tiques"
+                strSQL_TOTAL = strSQL_TOTAL & " GROUP BY 'totales'"
+                If bolTramosHoras = False Then
+                    strSQL_TOTAL = strSQL_TOTAL & DimePivot_Horas(intHoraIni, intHoraFin)
+                Else
+                    strSQL_TOTAL = strSQL_TOTAL & DimePivot_TramoDH
+                End If
+            End If
+            CurrentDb.QueryDefs("qryRegistroVentas_HorarioTiques").SQL = strSQL
+        Case "qryRegistroVentas_HorarioTiquesPuesto"
+            If intValPor = 1 Then
+                strSQL = "TRANSFORM Count(qryRegistroVentas_Tiques.AutoNum) AS CuentaDeAutoNum"
+            Else
+                strSQL = "TRANSFORM Count(qryRegistroVentas_Tiques.AutoNum)/[Total " & IIf(intDM = 1, "día", "mes") & "] As prc"
+            End If
+            iLin = intValPor
+            strSQL = strSQL & " SELECT " & IIf(intDM = 1, "Fecha_D([Fecha]) AS Día", "Format(Fecha,'yyyy/mm') AS Mes") & ", Puesto, Count(qryRegistroVentas_Tiques.AutoNum) AS [Total " & IIf(intDM = 1, "día", "mes") & "]"
+            strSQL = strSQL & " FROM qryRegistroVentas_Tiques"
+            strSQL = strSQL & " GROUP BY " & IIf(intDM = 1, "Fecha_D([Fecha])", "Format(Fecha,'yyyy/mm')") & ", Puesto"
+            If bolTramosHoras = False Then
+                strSQL = strSQL & DimePivot_Horas(intHoraIni, intHoraFin)
+            Else
+                strSQL = strSQL & DimePivot_TramoDH
+            End If
+            If intValPor = 1 Then
+            Else
+                strSQL_TOTAL = "TRANSFORM Count(qryRegistroVentas_Tiques.AutoNum)/[Total] As prc"
+                strSQL_TOTAL = strSQL_TOTAL & " SELECT 'totales' AS TOTALES, Count(qryRegistroVentas_Tiques.AutoNum) AS [Total], '-' As Puesto"
+                strSQL_TOTAL = strSQL_TOTAL & " FROM qryRegistroVentas_Tiques"
+                strSQL_TOTAL = strSQL_TOTAL & " GROUP BY 'totales'"
+                If bolTramosHoras = False Then
+                    strSQL_TOTAL = strSQL_TOTAL & DimePivot_Horas(intHoraIni, intHoraFin)
+                Else
+                    strSQL_TOTAL = strSQL_TOTAL & DimePivot_TramoDH
+                End If
+            End If
+            CurrentDb.QueryDefs("qryRegistroVentas_HorarioTiquesPuesto").SQL = strSQL
+        Case "qryRegistroVentas_DiaSemanaImportes"
+            If intValPor = 1 Then
+                strSQL = "TRANSFORM Sum(qryRegistroVentas_Tiques.[Total Tique]) AS [SumaDeTotal Tique1]"
+            Else
+                strSQL = "TRANSFORM Sum(qryRegistroVentas_Tiques.[Total Tique])/[Total semana] As prc"
+            End If
+            iLin = intValPor
+            strSQL = strSQL & " SELECT Format(Fecha, 'yyyy') & '/' & Format(CInt(Format(Fecha, 'ww')),'00') as Semana, Sum(qryRegistroVentas_Tiques.[Total Tique]) AS [Total semana]"
+            strSQL = strSQL & " FROM qryRegistroVentas_Tiques"
+            strSQL = strSQL & " GROUP BY Format(Fecha, 'yyyy') & '/' & Format(CInt(Format(Fecha, 'ww')),'00')"
+            If bolTramosHoras = False Then
+                strSQL = strSQL & " PIVOT DiaD([Fecha]) In ('L','M','X','J','V','S','D')"
+            Else
+                strSQL = strSQL & DimePivot_TramoDH
+            End If
+            If intValPor = 1 Then
+            Else
+                strSQL_TOTAL = "TRANSFORM Sum(qryRegistroVentas_Tiques.[Total Tique])/[Total semana] As prc"
+                strSQL_TOTAL = strSQL_TOTAL & " SELECT 'totales' AS TOTALES, Sum(qryRegistroVentas_Tiques.[Total Tique]) AS [Total semana]"
+                strSQL_TOTAL = strSQL_TOTAL & " FROM qryRegistroVentas_Tiques"
+                strSQL_TOTAL = strSQL_TOTAL & " GROUP BY 'totales'"
+                If bolTramosHoras = False Then
+                    strSQL_TOTAL = strSQL_TOTAL & " PIVOT DiaD([Fecha]) In ('L','M','X','J','V','S','D')"
+                Else
+                    strSQL_TOTAL = strSQL_TOTAL & DimePivot_TramoDH
+                End If
+            End If
+            CurrentDb.QueryDefs("qryRegistroVentas_DiaSemanaImportes").SQL = strSQL
+        Case "qryRegistroVentas_DiaSemanaTiques"
+            If intValPor = 1 Then
+                strSQL = "TRANSFORM Count(qryRegistroVentas_Tiques.AutoNum) AS CuentaDeAutoNum"
+            Else
+                strSQL = "TRANSFORM Count(qryRegistroVentas_Tiques.AutoNum)/[Total semana] As prc"
+            End If
+            iLin = intValPor
+            strSQL = strSQL & " SELECT Format(Fecha, 'yyyy') & '/' & Format(CInt(Format(Fecha, 'ww')),'00')  as Semana, Count(qryRegistroVentas_Tiques.AutoNum) AS [Total semana]"
+            strSQL = strSQL & " FROM qryRegistroVentas_Tiques"
+            strSQL = strSQL & " GROUP BY Format(Fecha, 'yyyy') & '/' & Format(CInt(Format(Fecha, 'ww')),'00')"
+            If bolTramosHoras = False Then
+                strSQL = strSQL & " PIVOT DiaD([Fecha]) In ('L','M','X','J','V','S','D')"
+            Else
+                strSQL = strSQL & DimePivot_TramoDH
+            End If
+            If intValPor = 1 Then
+            Else
+                strSQL_TOTAL = "TRANSFORM Count(qryRegistroVentas_Tiques.AutoNum)/[Total semana] As prc"
+                strSQL_TOTAL = strSQL_TOTAL & " SELECT 'totales' AS TOTALES, Count(qryRegistroVentas_Tiques.AutoNum) AS [Total semana]"
+                strSQL_TOTAL = strSQL_TOTAL & " FROM qryRegistroVentas_Tiques"
+                strSQL_TOTAL = strSQL_TOTAL & " GROUP BY 'totales'"
+                If bolTramosHoras = False Then
+                    strSQL_TOTAL = strSQL_TOTAL & " PIVOT DiaD([Fecha]) In ('L','M','X','J','V','S','D')"
+                Else
+                    strSQL_TOTAL = strSQL_TOTAL & DimePivot_TramoDH
+                End If
+            End If
+            CurrentDb.QueryDefs("qryRegistroVentas_DiaSemanaTiques").SQL = strSQL
+        Case "qryRegistrosVentas_TramosHorarioComensales"
+            strSQL = "TRANSFORM Sum(qryRegistroVentas_Tiques.SumaDeComensales) AS SumaDeSumaDeComensales"
+            strSQL = strSQL & " SELECT Fecha_D([Fecha]) AS Día, Sum(qryRegistroVentas_Tiques.SumaDeComensales) AS [Total día]"
+            strSQL = strSQL & " FROM qryRegistroVentas_Tiques"
+            strSQL = strSQL & " GROUP BY Fecha_D([Fecha])"
+            'strSQL = strSQL & " PIVOT qryRegistroVentas_Tiques.TramoDH"
+            strSQL = strSQL & DimePivot_TramoDH
+            CurrentDb.QueryDefs("qryRegistroVentas_TramosHorarioComensales").SQL = strSQL
+        
+        Case "ImportesDMxTiposDeTique"
+            strSQL = "UPDATE sysInformes SET Columnas = " & ConComillas(IIf(intDM = 1, "11,1012,23,0508,01", "11,1012,23,0908,01"))
+            strSQL = strSQL & " WHERE IdInforme = 12"
+            CurrentDb.Execute strSQL, dbFailOnError
+        Case "ImportesDMxSerie"
+            strSQL = "UPDATE sysInformes SET Columnas = " & ConComillas(IIf(intDM = 1, "11,1012,23,0508,01", "11,1012,23,0908,01"))
+            strSQL = strSQL & " WHERE IdInforme = 17"
+            CurrentDb.Execute strSQL, dbFailOnError
+        Case "ImportesDMxEmpleados"
+            strSQL = "UPDATE sysInformes SET Columnas = " & ConComillas(IIf(intDM = 1, "11,1013,23,0508,01", "11,2013,13,0908,01"))
+            strSQL = strSQL & " WHERE IdInforme = 16"
+            CurrentDb.Execute strSQL, dbFailOnError
+        Case "qryPagosCaja"
+            strSQL = "SELECT auxPagosCaja.Establecimiento, auxPagosCaja.Fecha, tbBarm.Barman & '-' & taProveedores.RazonSocial AS [Empleado-Proveedor], auxPagosCaja.Concepto, auxPagosCaja.Importe"
+            strSQL = strSQL & " FROM taProveedores RIGHT JOIN (auxPagosCaja LEFT JOIN tbBarm ON auxPagosCaja.aIdBarm = tbBarm.IdBarm) ON taProveedores.IdProveedor = auxPagosCaja.aIdProveedor"
+            strSQL = strSQL & " WHERE Fecha Between " & CLng(dtD_PagosCaja) & " AND " & CLng(dtH_PagosCaja)
+            If lngIdProveedor_PC <> 0 And InStr(strPagoCajaPBC, "1") > 0 Then strSQL = strSQL & " AND aIdProveedor= " & lngIdProveedor_PC
+            If lngIdBarm_PC <> 0 And InStr(strPagoCajaPBC, "2") > 0 Then strSQL = strSQL & " AND aIdBarm= " & lngIdBarm_PC
+            If InStr(strPagoCajaPBC, "1") = 0 Then strSQL = strSQL & " AND Nz(aIdProveedor,0)=0"
+            If InStr(strPagoCajaPBC, "2") = 0 Then strSQL = strSQL & " AND Nz(aIdBarm,0)=0"
+            If InStr(strPagoCajaPBC, "3") = 0 Then strSQL = strSQL & " AND (Nz(aIdBarm,0)<>0 OR Nz(aIdProveedor,0)<>0)"
+            CurrentDb.QueryDefs("qryPagosCaja").SQL = strSQL
+'        Case "qryPagosACaja"
+'            strSQL = "SELECT tbPagosCaja.Fecha, tbBarm.Barman & '-' & taProveedores.RazonSocial AS [Empleado-Proveedor], tbPagosCaja.Concepto, tbPagosCaja.Importe"
+'            strSQL = strSQL & " FROM taProveedores RIGHT JOIN (tbPagosCaja LEFT JOIN tbBarm ON tbPagosCaja.aIdBarm = tbBarm.IdBarm) ON taProveedores.IdProveedor = tbPagosCaja.aIdProveedor"
+'            strSQL = strSQL & " WHERE Fecha Between " & CLng(dtD_PagosCaja) & " AND " & CLng(dtH_PagosCaja)
+'            If lngIdProveedor_PC <> 0 And InStr(strPagoCajaPBC, "1") > 0 Then strSQL = strSQL & " AND IdProveedor= " & lngIdProveedor_PC
+'            If lngIdBarm_PC <> 0 And InStr(strPagoCajaPBC, "2") > 0 Then strSQL = strSQL & " AND IdBarm= " & lngIdBarm_PC
+'            If InStr(strPagoCajaPBC, "1") = 0 Then strSQL = strSQL & " AND Nz(IdProveedor,0)=0"
+'            If InStr(strPagoCajaPBC, "2") = 0 Then strSQL = strSQL & " AND Nz(IdBarm,0)=0"
+'            If InStr(strPagoCajaPBC, "3") = 0 Then strSQL = strSQL & " AND (Nz(IdBarm,0)<>0 OR Nz(IdProveedor,0)<>0)"
+'            CurrentDb.QueryDefs("qryPagosACaja").SQL = strSQL
+        
+        
+        
+            'strSQL = "SELECT tbPagosCaja.Fecha, tbBarm.Barman & '-' & taProveedores.RazonSocial AS [Empleado-Proveedor], tbPagosCaja.Concepto, tbPagosCaja.Importe"
+            'strSQL = strSQL & " FROM taProveedores RIGHT JOIN (tbPagosCaja LEFT JOIN tbBarm ON tbPagosCaja.aIdBarm = tbBarm.IdBarm) ON taProveedores.IdProveedor = tbPagosCaja.aIdProveedor"
+            'strSQL = strSQL & " WHERE Fecha Between " & CLng(dtD_PagosCaja) & " AND " & CLng(dtH_PagosCaja)
+            'If lngIdProveedor_PC <> 0 Then
+            '    strSQL = strSQL & " AND IdProveedor= " & lngIdProveedor_PC
+            'ElseIf InStr(strPagoCajaPBC, "1") = 0 Then
+            '    strSQL = strSQL & " AND IdProveedor Is Null"
+            'End If
+            'If lngIdBarm_PC <> 0 Then
+            '    strSQL = strSQL & " AND IdBarm = " & lngIdBarm_PC
+            'ElseIf InStr(strPagoCajaPBC, "2") = 0 Then
+            '    strSQL = strSQL & " AND IdBarm Is Null"
+            'End If
+            'If InStr(strPagoCajaPBC, "3") = 0 Then
+            '    strSQL = strSQL & " AND IdProveedor Is Null AND IdBarm Is Null"
+            'End If
+            'CurrentDb.QueryDefs("qryPagosACaja").SQL = strSQL
+        Case "qryPresenciaBarm"
+            strSQL = "SELECT IdPresenciaBarm, Empleado, DiaD(Fecha) & ' ' & Format(Fecha,'dd mmm') AS Fecha_, DimeHorarioDia(Nz([ES],'')) As [Entra-Sale], " & _
+                     "Tiempo AS Trabajado, " & _
+                     "TiempoNoche As [T Noche], " & _
+                     "TiempoExtra As [T Extra], " & _
+                     "IiF(EsFestivo(Fecha) AND Nz([Tiempo],0)>0,'F','-') as Festivo" & _
+                     " FROM auxPresenciaBarm" & _
+                     " ORDER BY IdBarm, Fecha"
+            CurrentDb.QueryDefs("qryPresenciaBarm").SQL = strSQL
+            
+
+    End Select
+    
+HandleExit:
+    Exit Function
+HandleError:
+    MBox Err.Description
+    Resume 'HandleExit
+End Function
+
+Public Function EnvioListadosProgramados(Optional intPreguntar As Integer = True) As Integer
+    On Error GoTo HandleError
+    Dim strSQL As String, rs As Recordset, cI As New cInforme_AEnviar, i As Integer, j As Integer
+    Dim intR As Integer, strT As String, strEnviados As String
+    strSQL = "SELECT Id, Titulo, ToEmail FROM cfgInformes_AEnviar"
+    strSQL = strSQL & " WHERE ProximoEnvio <= " & CLng(Date - 1)
+    Set rs = CurrentDb.OpenRecordset(strSQL, dbOpenSnapshot)
+    If Not rs.EOF Then
+        While Not rs.EOF
+            strT = strT & vbCrLf & ExtraeLin(rs("Titulo"), 1) & vbTab & "A: " & rs("ToEmail")
+            i = i + 1
+            rs.MoveNext
+        Wend
+        If i > 1 Then
+            strT = strT & vbCrLf & "Se pedirá confirmación antes de cada informe"
+        End If
+        If intPreguntar Then
+            intR = MBox("¿Enviar listados programados ahora?" & vbCrLf & "-----------------------------------------------" & vbCrLf & strT, vbOKCancel + vbQuestion + vbDefaultButton2)
+            If intR = vbCancel Then GoTo HandleExit
+        End If
+        rs.MoveFirst
+    End If
+    i = 0
+    While Not rs.EOF
+        If intPreguntar Then
+            intR = MBox("¿Enviar listado " & ExtraeLin(rs("Titulo"), 1) & vbCrLf & "A: " & rs("ToEmail") & "?", vbYesNo + vbQuestion + vbDefaultButton2)
+            If intR = vbNo Then GoTo Siguiente
+        End If
+        
+        MensajeBusyBox "Enviando Listados: " & vbCrLf & ExtraeLin(rs("Titulo"), 1) & vbCrLf & "A: " & rs("ToEmail"), "Enviando listados", , True
+        If cI.FindFirst("Id = " & rs("Id")) = True Then
+            If cI.Send Then
+                i = i + 1
+                strEnviados = strEnviados & vbCrLf & ExtraeLin(rs("Titulo"), 1) & " ------> " & rs("ToEmail")
+            End If
+        End If
+Siguiente:
+        rs.MoveNext
+    Wend
+    If i > 0 Then
+        MensajeBusyBox IIf(i = 1, "Se envió correctamente 1 listado", "Se enviaron correctamente " & i & " listados" & strEnviados), "Listados Enviados", True, True
+    Else
+        'MensajeBusyBox "No se envió correctamente listado alguno", "Listados Enviados", True, True
+    End If
+HandleExit:
+    Exit Function
+HandleError:
+    MBox Err.Description
+    Resume HandleExit
+End Function
