@@ -1,0 +1,1228 @@
+Option Compare Database
+Option Explicit
+    Dim grsZ As Recordset
+    
+Public Sub Actualizar_auxRegistroVentasZ_Clientes_IVA_Tickets(dtFecha As Date, Optional lngIdPuesto As Long = 0)
+    Dim i As Integer
+    Dim rs As Recordset, rsAux As Recordset
+    Dim strSQL As String, strAntNum As String
+    Dim intLin As Integer
+    Dim db As Database, strMDB As String, intHisVta As Integer
+    On Error GoTo Error_Actualizar_auxRegistroVentasZ_Clientes_IVA_Tickets
+    'If lngIdPuesto = 0 Then lngIdPuesto = glngMiPuesto
+    strSQL = "DELETE * FROM auxRegistroVentasZ_Clientes_IVA"
+'    strSQL = strSQL & " WHERE linea<1000"
+    CurrentDb.Execute strSQL
+    Set rsAux = CurrentDb.OpenRecordset("auxRegistroVentasZ_Clientes_IVA")
+    strSQL = "SELECT tbTickCab.NumTicket, tbTickCab.Serie, tbTickCab.CodTipTick, tbTickCab.IdBarm, tbTickCab.Fecha, tbTickCab.Hora, qryTicketsTotalesTiposIVA.Base, qryTicketsTotalesTiposIVA.IVA, tbTickCab.TotalTicket, tbTickCab_Cli.IdCliente, tbTickCab.Adultos, tbTickCab.Niños"
+    strSQL = strSQL & " FROM ((tbTipTick RIGHT JOIN tbTickCab ON tbTipTick.CodTipTick = tbTickCab.CodTipTick) LEFT JOIN tbTickCab_Cli ON tbTickCab.IdTickCab = tbTickCab_Cli.IdTickCab) INNER JOIN qryTicketsTotalesTiposIVA ON tbTickCab.IdTickCab = qryTicketsTotalesTiposIVA.IdTickCab"
+    strSQL = strSQL & " WHERE tbTickCab.Fecha =#" & Format(dtFecha, "mm/dd/yyyy") & "#"
+    If lngIdPuesto <> 0 Then strSQL = strSQL & " AND tbTickCab.IdPuesto = " & lngIdPuesto
+    If Nz(DameValorParam("ZsSoloTiposIncluirEnZ"), False) = True Then
+        strSQL = strSQL & " AND tbTipTick.IncluirEnZ = True"
+    End If
+    strSQL = strSQL & " ORDER BY tbTickCab.NumTicket;"
+    Pon_auxFiles_Historicos dtFecha, dtFecha, lngIdPuesto, , , dtFecha = Date, True
+    Dim rsFi As Recordset
+    Set rsFi = CurrentDb.OpenRecordset("SELECT * FROM auxFiles ORDER BY Orden", dbOpenSnapshot)
+    While Not rsFi.EOF
+        Set db = OpenDatabase(rsFi("strMdb"), , True)
+        Set rs = db.OpenRecordset(strSQL)
+        While Not rs.EOF
+            rsAux.AddNew
+            rsAux("Serie") = rs("Serie")
+            rsAux("NumFactura") = rs("NumTicket")
+            rsAux("NumTicket") = rs("NumTicket")
+            If rsAux("Serie") & rsAux("NumTicket") <> strAntNum Then
+                intLin = 1
+                strAntNum = rsAux("Serie") & rsAux("NumTicket")
+                rsAux("Adultos") = Nz(rs("Adultos"), 0)
+                rsAux("Niños") = Nz(rs("Niños"), 0)
+            Else
+                intLin = intLin + 1
+            End If
+            rsAux("linea") = intLin
+            rsAux("Fecha") = rs("Fecha")
+            rsAux("Hora") = rs("Hora")
+            rsAux("IdBarm") = rs("IdBarm")
+            rsAux("IdCliente") = rs("IdCliente")
+            rsAux("Base") = rs("Base")
+            rsAux("IVA") = rs("IVA")
+            rsAux("Total") = Redondea(rs("Base") * (1 + rs("IVA")), 2)
+            rsAux("TipoTique") = rs("CodTipTick")
+            rsAux.Update
+            rs.MoveNext
+        Wend
+        rsFi.MoveNext
+    Wend
+
+'Historico:
+'    intHisVta = 1
+'    strMDB = UltimoHistorico(Year(dtFecha), Month(dtFecha), lngIdPuesto, False) 'strCarpetaBase & "R4_His.mdb"
+'    If strMDB = "" Then GoTo Actual
+'SetDbHis:
+'    Set db = OpenDatabase(strMDB, , True)
+'    GoTo Bucle
+'Actual:
+'    intHisVta = 2
+'    strCarpetaBase = Nz(DLookup("CarpetaBase", "cfgPuestos", "IdPuesto = " & lngIdPuesto), "")
+'    strMDB = strCarpetaBase & "R4_Vta.mdb"
+'    Set db = OpenDatabase(strMDB, , True)
+'Bucle:
+'
+'    Set rs = db.OpenRecordset(strSQL)
+'    While Not rs.EOF
+'        rsAux.AddNew
+'        rsAux("NumTicket") = rs("NumTicket")
+'        rsAux("NumFactura") = CStr(rs("NumTicket"))
+'        If rsAux("NumTicket") <> strAntNum Then
+'            intLin = 1
+'            strAntNum = rsAux("NumTicket")
+'            rsAux("Adultos") = Nz(rs("Adultos"), 0)
+'            rsAux("Niños") = Nz(rs("Niños"), 0)
+'        Else
+'            intLin = intLin + 1
+'        End If
+'        rsAux("linea") = intLin
+'        rsAux("Fecha") = rs("Fecha")
+'        rsAux("Hora") = rs("Hora")
+'        rsAux("IdBarm") = rs("IdBarm")
+'        rsAux("IdCliente") = rs("IdCliente")
+'        rsAux("Base") = rs("Base")
+'        rsAux("IVA") = rs("IVA")
+'        rsAux("Total") = Redondea(rs("Base") * (1 + rs("IVA")), 2)
+'        rsAux("TipoTique") = rs("CodTipTick")
+'        rsAux.Update
+'        rs.MoveNext
+'    Wend
+'    If intHisVta = 1 Then
+'        If strMDB Like "*ii.mdb" Then
+'            strMDB = Mid(strMDB, 1, Len(strMDB) - 6) & "i.mdb"
+'            If Dir(strMDB) <> "" Then GoTo SetDbHis
+'            strMDB = Mid(strMDB, 1, Len(strMDB) - 5) & ".mdb"
+'            If Dir(strMDB) <> "" Then GoTo SetDbHis
+'        End If
+'        GoTo Actual
+'    End If
+Salir_Actualizar_auxRegistroVentasZ_Clientes_IVA_Tickets:
+    Exit Sub
+Error_Actualizar_auxRegistroVentasZ_Clientes_IVA_Tickets:
+    Select Case Err
+        Case Else
+            MsgBox "Error nº " & Err & vbCrLf & Err.Description & vbCrLf & "En Actualizar_auxRegistroVentasZ_Clientes_IVA_Tickets"
+    End Select
+    Resume Salir_Actualizar_auxRegistroVentasZ_Clientes_IVA_Tickets
+End Sub
+
+Public Sub Actualizar_auxRegistroVentasZ_FormasPago(dtFecha As Date, Optional lngIdPuesto As Long = 0)
+    Dim i As Integer
+    Dim rs As Recordset, rsAux As Recordset
+    Dim strSQL As String, strAntNum As String
+    Dim intLin As Integer
+    Dim db As Database, strMDB As String, intHisVta As Integer
+    Dim intPaso As Integer
+    On Error GoTo Error_Actualizar_auxRegistroVentasZ_FormasPago
+    'If lngIdPuesto = 0 Then lngIdPuesto = glngMiPuesto
+    strSQL = "DELETE * FROM auxRegistroVentasZ_FormasPago"
+    CurrentDb.Execute strSQL
+    Set rsAux = CurrentDb.OpenRecordset("auxRegistroVentasZ_FormasPago")
+    
+    Pon_auxFiles_Historicos dtFecha, dtFecha, lngIdPuesto, , , dtFecha = Date, True
+    Dim rsFi As Recordset
+    Set rsFi = CurrentDb.OpenRecordset("SELECT * FROM auxFiles ORDER BY Orden", dbOpenSnapshot)
+    intPaso = 1
+VerPaso:
+    If intPaso = 1 Then ' Tiques con una forma de pago
+        strSQL = "SELECT tbTickCab.NumTicket, tbTickCab.Serie, tbTickCab.CodTipTick, tbTickCab.IdBarm, tbTickCab.HoraHecho as Fecha, tbTickCab.Hora, tbTickCab.TotalTicket, tbTickCab_Cli.IdCliente, tbTickCab.TotalPagado, tbTickCab.FormaPagado, tbTickCab.IdFactura"
+        strSQL = strSQL & " FROM (tbTipTick RIGHT JOIN tbTickCab ON tbTipTick.CodTipTick = tbTickCab.CodTipTick) LEFT JOIN tbTickCab_Cli ON tbTickCab.IdTickCab = tbTickCab_Cli.IdTickCab "
+        strSQL = strSQL & " WHERE tbTickCab.Fecha =#" & Format(dtFecha, "mm/dd/yyyy") & "#"
+        strSQL = strSQL & " AND FormaPagado <> '+ varias'"
+        If lngIdPuesto <> 0 Then strSQL = strSQL & " AND tbTickCab.IdPuesto = " & lngIdPuesto
+        If Nz(DameValorParam("ZsSoloTiposIncluirEnZ"), False) = True Then
+            strSQL = strSQL & " AND tbTipTick.IncluirEnZ = True"
+        End If
+        strSQL = strSQL & " ORDER BY tbTickCab.NumTicket;"
+    ElseIf intPaso = 2 Then  ' Tiques con varias formas de pago
+        strSQL = "SELECT tbTickCab.NumTicket, tbTickCab.Serie, tbCajaDet.Fecha, tbFPago.Descripcion, tbCajaDet.Cantidad, tbCajaDet_Concepto.Concepto, tbTickCab.IdFactura"
+        strSQL = strSQL & " FROM tbTipTick RIGHT JOIN ((tbFPago RIGHT JOIN (tbTickCab RIGHT JOIN tbCajaDet ON tbTickCab.IdTickCab = tbCajaDet.IdFrom) ON tbFPago.CodFPago = tbCajaDet.CodFPago) LEFT JOIN tbCajaDet_Concepto ON tbCajaDet.IdCajaDet = tbCajaDet_Concepto.IdCajaDet) ON tbTipTick.CodTipTick = tbTickCab.CodTipTick"
+        strSQL = strSQL & " WHERE tbTickCab.Fecha=#" & Format(dtFecha, "mm/dd/yyyy") & "#  AND tbCajaDet.Origen='T'"
+        strSQL = strSQL & " AND tbTickCab.FormaPagado = '+ varias'"
+        If lngIdPuesto <> 0 Then strSQL = strSQL & " AND tbTickCab.IdPuesto = " & lngIdPuesto
+        If Nz(DameValorParam("ZsSoloTiposIncluirEnZ"), False) = True Then
+            strSQL = strSQL & " AND tbTipTick.IncluirEnZ = True"
+        End If
+        strSQL = strSQL & " ORDER BY tbTickCab.NumTicket;"
+        If Not rsFi.BOF Then rsFi.MoveFirst
+    Else 'Pagos de caja
+        strSQL = "SELECT -1 as NumTicket, 'CM' as Serie, Fecha, FormaPago as Descripcion, Importe as Cantidad, Concepto, 0 as IdFactura" _
+            & " FROM tbPagosCaja" _
+            & " WHERE DateValue(Fecha) =#" & Format(dtFecha, "mm/dd/yyyy") & "#" _
+            & " ORDER BY Fecha"
+        'Si está el archivo R4_Vta.mdb entre los de auxFiles, reemplazarlo por Cli\R4Cli.mdb
+        CurrentDb.Execute "UPDATE auxFiles SET strMDB=Replace(strMDB,'R4_Vta.mdb','Cli\R4Cli.mdb') WHERE strMDB Like'*R4_Vta.mdb'", dbFailOnError
+        Set rsFi = CurrentDb.OpenRecordset("SELECT * FROM auxFiles ORDER BY Orden", dbOpenSnapshot)
+        'If Not rsFi.BOF Then rsFi.MoveFirst
+    End If
+    While Not rsFi.EOF
+        Set db = OpenDatabase(rsFi("strMdb"), , True)
+        Set rs = db.OpenRecordset(strSQL)
+        While Not rs.EOF
+            rsAux.AddNew
+            rsAux("Serie") = Nz(rs("Serie"), "")
+            rsAux("NumTicket") = Nz(rs("NumTicket"), 0)
+            If rsAux("Serie") & rsAux("NumTicket") <> strAntNum Or strAntNum = "0" Then
+                intLin = 1
+                strAntNum = rsAux("Serie") & rsAux("NumTicket")
+            Else
+                intLin = intLin + 1
+            End If
+            rsAux("linea") = intLin
+            rsAux("Fecha") = rs("Fecha")
+            If intPaso = 1 Then
+                rsAux("FormaPago") = rs("FormaPagado")
+                rsAux("Pagado") = rs("TotalPagado")
+                rsAux("Concepto") = "Pago tique"
+            Else
+                rsAux("FormaPago") = rs("Descripcion")
+                rsAux("Pagado") = rs("cantidad")
+                rsAux("Concepto") = rs("Concepto")
+            End If
+            rsAux("IdFactura") = rs("IdFactura")
+            rsAux.Update
+            rs.MoveNext
+        Wend
+        rsFi.MoveNext
+    Wend
+    If intPaso < 3 Then
+        intPaso = intPaso + 1
+        GoTo VerPaso
+    End If
+    
+Salir_Actualizar_auxRegistroVentasZ_FormasPago:
+    Exit Sub
+Error_Actualizar_auxRegistroVentasZ_FormasPago:
+    Select Case Err
+        Case Else
+            MsgBox "Error nº " & Err & vbCrLf & Err.Description & vbCrLf & "En Actualizar_auxRegistroVentasZ_FormasPago"
+    End Select
+    Resume 'Salir_Actualizar_auxRegistroVentasZ_FormasPago
+End Sub
+
+Public Sub Actualizar_auxPresenciaCamareros(dtFecha As Date)
+    Dim i As Integer
+    Dim rs As Recordset, rsAux As Recordset
+    Dim strSQL As String, strAntNum As String
+    Dim intLin As Integer
+    Dim db As Database, strMDB As String, intHisVta As Integer
+    On Error GoTo Error_Actualizar_auxPresenciaCamareros
+    strSQL = "DELETE * FROM auxPresenciaCamareros"
+    CurrentDb.Execute strSQL, dbFailOnError
+    Set rsAux = CurrentDb.OpenRecordset("auxPresenciaCamareros")
+    strSQL = "SELECT tbPresenciaBarm.*, tbBarm.CodBarman"
+    strSQL = strSQL & " FROM tbPresenciaBarm LEFT JOIN tbBarm ON tbPresenciaBarm.IdBarm = tbBarm.IdBarm"
+    strSQL = strSQL & " WHERE tbPresenciaBarm.Fecha=#" & Format(dtFecha, "mm/dd/yyyy") & "#"
+    strSQL = strSQL & " ORDER BY tbPresenciaBarm.Entra;"
+    Set rs = CurrentDb.OpenRecordset(strSQL)
+    While Not rs.EOF
+        rsAux.AddNew
+        rsAux("IdBarm") = rs("IdBarm")
+        rsAux("CodBarman") = rs("CodBarman")
+        rsAux("Camarero") = rs("Empleado")
+        rsAux("Entra") = rs("Entra")
+        rsAux("Sale") = rs("Sale")
+        rsAux("Tiempo") = rs("Tiempo")
+        rsAux.Update
+        rs.MoveNext
+    Wend
+Salir_Actualizar_auxPresenciaCamareros:
+    Exit Sub
+Error_Actualizar_auxPresenciaCamareros:
+    Select Case Err
+        Case Else
+            MsgBox "Error nº " & Err & vbCrLf & Err.Description & vbCrLf & "En Actualizar_auxPresenciaCamareros"
+    End Select
+    Resume Salir_Actualizar_auxPresenciaCamareros
+End Sub
+
+Public Sub RellenarZs(dtFecha As Date _
+           , Optional lngIdPuesto As Long = 0 _
+           , Optional curDism As Currency = 0 _
+           , Optional strCarpetaPuesto As String = "" _
+           , Optional bBorrar_tbZs As Boolean = True)
+    Dim i As Integer, i2 As Integer
+    Dim rs As Recordset
+    Dim strSQL As String, strAntNum As String
+    Dim intLin As Integer, curBase As Currency, curTotal As Currency, curBase2 As Currency, curTotal2 As Currency, curP As Currency, curB As Currency, curT As Currency
+    Dim intComenA As Integer, intComenN As Integer
+    Dim lngT As Long, strTXT As String, curT0 As Currency, curTotal0 As Currency, strBarm As String
+    Dim lngIdBarm As Long
+    Dim rs2 As Recordset, strTexto As String, j As Integer, curDtos As Currency, iDto As Integer
+    Dim intVerNumFac As Integer
+    On Error GoTo Error_RellenarZs
+    curDism = 0 ' De momento pasando de la disminución....
+    'If lngIdPuesto = 0 Then lngIdPuesto = glngMiPuesto
+    DoCmd.Hourglass True
+    Call Actualizar_auxRegistroVentasZ_Clientes_IVA_Tickets(dtFecha, lngIdPuesto)
+    DoCmd.Hourglass False
+    DoCmd.Hourglass True
+    Call Actualizar_auxRegistroVentasZ_FormasPago(dtFecha, lngIdPuesto)
+    DoCmd.Hourglass False
+    If bBorrar_tbZs Then
+        strSQL = "DELETE * FROM tbZs " 'WHERE Fecha = #" & Format(dtFecha, "mm/dd/yyyy") & "#"
+        'strSQL = strSQL & " AND linea < 1000"
+        CurrentDb.Execute strSQL, dbFailOnError
+    End If
+    Set grsZ = CurrentDb.OpenRecordset("tbZs")
+    intLin = Nz(DMax("linea", "tbZs"), 0)
+    strTexto = ": " & Nz(DameValorParam("EstablecimientoNombre"), "¿Establecimiento?")
+    strTexto = RecDerTop("Establecimiento", 0, 40 - Len(strTexto)) & strTexto
+    GrabaLin dtFecha, intLin, strTexto
+    If lngIdPuesto = 0 Then
+        GrabaLin dtFecha, intLin, "Todos los puestos"
+    Else
+        GrabaLin dtFecha, intLin, "Puesto: " & Nz(DLookup("NombrePuesto", "cfgPuestos", "IdPuesto = " & lngIdPuesto), "¿?IdPuesto=" & lngIdPuesto)
+    End If
+
+RegistroDeVentas:
+    If DameValorParam("ZsVentasXIVA") = False Then GoTo DesgloseSecciones
+    GrabaLin dtFecha, intLin, "Registro de Ventas: " & Format(dtFecha, "dd/mm/yyyy")
+    intComenA = Nz(DSum("Adultos", "auxRegistroVentasZ_Clientes_IVA"), 0)
+    intComenN = Nz(DSum("Niños", "auxRegistroVentasZ_Clientes_IVA"), 0)
+    If intComenA + intComenN > 0 Then
+        GrabaLin dtFecha, intLin, "Total Comensales: " & intComenA + intComenN
+    End If
+    GrabaLin dtFecha, intLin, LlenaChar("_", 40)
+    GrabaLin dtFecha, intLin, Centra("Ventas por IVA", 40)
+    GrabaLin dtFecha, intLin, Centra("IVA", 10) & " " & Centra("Base", 14) & " " & Centra("Total", 14)
+    GrabaLin dtFecha, intLin, LlenaChar("-", 10) & " " & LlenaChar("-", 14) & " " & LlenaChar("-", 14)
+    
+    strSQL = "SELECT Sum(auxRegistroVentasZ_Clientes_IVA.Base) AS SumaDeBase, auxRegistroVentasZ_Clientes_IVA.IVA, Sum(auxRegistroVentasZ_Clientes_IVA.Total) AS SumaDeTotal"
+    strSQL = strSQL & " FROM auxRegistroVentasZ_Clientes_IVA"
+    strSQL = strSQL & " GROUP BY auxRegistroVentasZ_Clientes_IVA.IVA;"
+    Set rs = CurrentDb.OpenRecordset(strSQL)
+    i = 0
+    
+    While Not rs.EOF
+        i = i + 1
+        curB = rs("SumaDeBase")
+        curT = rs("SumaDeTotal")
+        GrabaLin dtFecha, intLin, LlenaIzq(Format(rs("IVA"), "percent"), 10) & " " & LlenaIzq(Format(curB, "Currency"), 14) & " " & LlenaIzq(Format(curT, "Currency"), 14)
+        curBase = curBase + curB
+        curTotal = curTotal + curT
+        curTotal0 = curTotal0 + rs("SumaDeTotal")
+        rs.MoveNext
+    Wend
+    curTotal2 = curTotal
+    curBase2 = curBase
+    If i > 1 Then ' si hay más de un IVA poner el total
+        GrabaLin dtFecha, intLin, LlenaChar("-", 10) & " " & LlenaChar("-", 14) & " " & LlenaChar("-", 14)
+        GrabaLin dtFecha, intLin, Llena("TOTAL", 10) & " " & LlenaIzq(Format(curBase, "Currency"), 14) & " " & LlenaIzq(Format(curTotal, "Currency"), 14)
+    End If
+
+TotalesSeries:
+    ACTUALIZAR_auxRegistroVentas dtFecha, dtFecha, , , lngIdPuesto, , IIf(Nz(DameValorParam("ZsSoloTiposIncluirEnZ"), False) = True, -99, -100)
+    If Nz(DameValorParam("ZsTotalesSeries"), True) = True Or Nz(DameValorParam("ZsDesgloseXSecciones"), True) = True Then
+    '    Call ActualizarEF_auxRegistroVentas(dtFecha, dtFecha, lngIdPuesto)
+    End If
+    If Nz(DameValorParam("ZsTotalesSeries"), True) = False Then GoTo DesgloseSecciones
+    
+    'TOTALES SERIES
+    Dim intDetalleSeries As Integer
+    intDetalleSeries = False 'Nz(DameValorParam("ZsDetalleSeries"), True)
+    strSQL = "SELECT auxRegistroVentas.Serie, Count(Linea) AS [NumTiques], Min(Numfactura) AS [Desde Tique], Max(Numfactura) AS [Hasta Tique]"
+    strSQL = strSQL & " FROM auxRegistroVentas"
+    strSQL = strSQL & " WHERE Linea=1"
+    strSQL = strSQL & " GROUP BY auxRegistroVentas.Serie;"
+    Set rs = CurrentDb.OpenRecordset(strSQL, dbOpenSnapshot)
+    curTotal = 0
+    Dim strST As String
+    If Not rs.EOF Then
+        rs.MoveLast: rs.MoveFirst
+        If rs.RecordCount > 1 Then
+            strST = "Series"
+        Else
+            strST = "Tiques"
+        End If
+        PonCabeceraZ grsZ, intLin, dtFecha, _
+        "Totales " & strST, _
+        Centra("SERIE", 5) & " " & Centra("Desde", 9) & " " & Centra("Hasta", 9) & " " & Centra("Nº Tiques", 14), _
+        LlenaChar("-", 5) & " " & LlenaChar("-", 9) & " " & LlenaChar("-", 9) & " " & LlenaChar("-", 14)
+    End If
+    While Not rs.EOF
+        curT = rs("NumTiques")
+        'strTexto = ""
+        'If strST = "Series" Then strTexto = "Serie: " & rs("Serie")
+        'strTexto = strTexto & LlenaIzqChar("Nº de tiques: " & curT, 40 - Len(strTexto), ".")
+        'PonLineaZ grsZ, intLin, j, dtFecha, strTexto
+        'strTexto = "Desde T. Nº: " & rs("[Desde Tique]")
+        'strTexto = strTexto & LlenaIzqChar("Hasta T. Nº: " & rs("[Hasta Tique]"), 40 - Len(strTexto), ".")
+        strTexto = Centra(rs("Serie"), 5) & " " & _
+        LlenaIzq(rs("[Desde Tique]"), 9) & " " & _
+        LlenaIzq(rs("[Hasta Tique]"), 9) & " " & _
+        LlenaIzq(Format(curT, "#,##0"), 14)
+        PonLineaZ grsZ, intLin, j, dtFecha, strTexto
+        
+        
+        If intDetalleSeries Then PonLineaZ grsZ, intLin, j, dtFecha, LlenaChar("-", 40)
+        strSQL = "SELECT auxRegistroVentas.Serie, Sum(auxRegistroVentas.Cantidad) AS SumaDeCantidad, " _
+        & "auxRegistroVentas.Concepto, auxRegistroVentas.Precio, Sum(auxRegistroVentas.Importe) AS SumaDeImporte, auxRegistroVentas.IVA"
+        strSQL = strSQL & " FROM auxRegistroVentas"
+        strSQL = strSQL & " WHERE auxRegistroVentas.Serie = '" & rs("Serie") & "'"
+        strSQL = strSQL & " GROUP BY auxRegistroVentas.Serie, auxRegistroVentas.Concepto, auxRegistroVentas.Precio, auxRegistroVentas.IVA"
+        Set rs2 = CurrentDb.OpenRecordset(strSQL, dbOpenSnapshot)
+        curT = 0
+        i = 0: iDto = 0: curDtos = 0
+        While Not rs2.EOF
+            If intDetalleSeries Then
+                If rs2("Concepto") Like "Descuento*%" Then
+                    curDtos = curDtos + rs2("SumaDeImporte")
+                Else
+                    strTexto = LlenaIzq(rs2("SumaDeCantidad"), 3) & " " & Llena(rs2("Concepto"), 20) & " " _
+                    & LlenaIzq(Format(Round(rs2("Precio") * (1 + rs2("IVA")), 2), "0.00"), 6) & " " _
+                    & LlenaIzq(Format(rs2("SumaDeImporte"), "#,##0.00"), 8)
+                    PonLineaZ grsZ, intLin, i, dtFecha, strTexto
+                End If
+            End If
+            curT = curT + Nz(rs2("SumaDeImporte"), 0)
+            rs2.MoveNext
+        Wend
+        If curDtos <> 0 Then
+            strTexto = LlenaIzq("", 3) & " " & Llena("Descuentos", 20) & " " _
+            & LlenaIzq("", 6) & " " _
+            & LlenaIzq(Format(curDtos, "#,##0.00"), 8)
+            PonLineaZ grsZ, intLin, i, dtFecha, strTexto
+        End If
+        If i > 1 Or intDetalleSeries = False Then
+            strTexto = "Total Serie " & rs("Serie") & ": "
+            strTexto = strTexto & LlenaIzqChar(Format(curT, "#,##0.00"), 40 - Len(strTexto), ".")
+            PonLineaZ grsZ, intLin, i, dtFecha, strTexto
+        End If
+        PonLineaZ grsZ, intLin, j, dtFecha, LlenaChar("-", 40)
+        curTotal = curTotal + curT
+        rs.MoveNext
+    Wend
+    strTexto = "Total " & IIf(strST = "Series", "todas las series", "todos los tiques")
+    strTexto = strTexto & LlenaIzqChar(Format(curTotal, "#,##0.00"), 40 - Len(strTexto), ".")
+    PonLineaZ grsZ, intLin, i, dtFecha, strTexto
+    'strTexto = "Desde T. Nº: " & DMin("Autonum", "auxRegistroVentas")
+    'strTexto = strTexto & LlenaIzqChar("Hasta T. Nº: " & DMax("Autonum", "auxRegistroVentas"), 40 - Len(strTexto), ".")
+    'PonLineaZ grsZ, intLin, j, dtFecha, strTexto
+    
+    PonLineaZ grsZ, intLin, j, dtFecha, LlenaChar("-", 40)
+DesgloseSecciones:
+    If DameValorParam("ZsDesgloseXSecciones") = False Then GoTo DesgloseFamilias
+    'DESGLOSE SECCIONES
+    'Call ActualizarEF_auxRegistroVentas(dtFecha, dtFecha, lngIdPuesto)
+    strSQL = "SELECT Nz(tbSec_Art.Seccion,'No sección') AS Seccion, Sum(auxRegistroVentas.Base) AS SumaDeBase, Sum(auxRegistroVentas.Importe) AS SumaDeImporte"
+    strSQL = strSQL & " FROM auxRegistroVentas LEFT JOIN tbSec_Art ON auxRegistroVentas.IdSeccion = tbSec_Art.IdSeccion"
+    strSQL = strSQL & " GROUP BY tbSec_Art.Orden, tbSec_Art.Seccion"
+    'strSQL = strSQL & " HAVING (((tbSec_Art.DesgloseZ) = True))"
+    strSQL = strSQL & " ORDER BY tbSec_Art.Orden;"
+    Set rs = CurrentDb.OpenRecordset(strSQL, dbOpenSnapshot)
+    If Not rs.EOF Then
+        PonCabeceraZ grsZ, intLin, dtFecha, _
+            Centra("Desglose por secciones", 40), _
+            Centra("SECCIÓN", 10) & " " & Centra("Base", 14) & " " & Centra("Total", 14), _
+            LlenaChar("-", 10) & " " & LlenaChar("-", 14) & " " & LlenaChar("-", 14)
+    End If
+    curBase = 0: curTotal = 0: i = 0
+    
+    While Not rs.EOF
+        curB = Nz(rs("SumaDeBase"), 0)
+        curT = Nz(rs("SumaDeImporte"), 0)
+        strTXT = rs("Seccion")
+        strTexto = Llena(strTXT, 10) & " " & _
+                   LlenaIzq(Format(curB, "Currency"), 14) & " " & _
+                   LlenaIzq(Format(curT, "Currency"), 14)
+        PonLineaZ grsZ, intLin, i, dtFecha, strTexto
+        curBase = curBase + curB
+        curTotal = curTotal + curT
+        rs.MoveNext
+    Wend
+    If i > 1 Then
+        PonLineaZ grsZ, intLin, i, dtFecha, LlenaChar("-", 40)
+        strTexto = "Total: "
+        strTexto = Llena(strTexto, 11) & _
+                   LlenaIzqChar(Format(curBase, "Currency"), 14, ".") & _
+                   LlenaIzqChar(Format(curTotal, "Currency"), 14, ".")
+        PonLineaZ grsZ, intLin, i, dtFecha, strTexto
+    End If
+    
+DesgloseFamilias:
+    If DameValorParam("ZsDesgloseXFamilias") = False Then GoTo DesgloseArticulos
+    strSQL = "SELECT Nz(tbFam_Art.Familia,'No familia') as Familia, Sum(auxRegistroVentas.Base) AS SumaDeBase, Sum(auxRegistroVentas.Importe) AS SumaDeImporte"
+    strSQL = strSQL & " FROM auxRegistroVentas LEFT JOIN tbFam_Art ON auxRegistroVentas.IdFamilia = tbFam_Art.IdFamilia"
+    strSQL = strSQL & " GROUP BY tbFam_Art.Orden, tbFam_Art.Familia"
+    strSQL = strSQL & " ORDER BY tbFam_Art.Orden;"
+    Set rs = CurrentDb.OpenRecordset(strSQL, dbOpenSnapshot)
+    If Not rs.EOF Then
+        PonCabeceraZ grsZ, intLin, dtFecha, _
+            Centra("Desglose por familias", 40), _
+            Centra("FAMILIA", 10) & " " & Centra("Base", 14) & " " & Centra("Total", 14), _
+            LlenaChar("-", 10) & " " & LlenaChar("-", 14) & " " & LlenaChar("-", 14)
+    End If
+    curBase = 0: curTotal = 0: i = 0
+    
+    While Not rs.EOF
+        curB = Nz(rs("SumaDeBase"), 0)
+        curT = Nz(rs("SumaDeImporte"), 0)
+        strTXT = rs("Familia")
+        strTexto = Llena(strTXT, 10) & " " & _
+                   LlenaIzq(Format(curB, "Currency"), 14) & " " & _
+                   LlenaIzq(Format(curT, "Currency"), 14)
+        PonLineaZ grsZ, intLin, i, dtFecha, strTexto
+        curBase = curBase + curB
+        curTotal = curTotal + curT
+        rs.MoveNext
+    Wend
+    If i > 1 Then
+        PonLineaZ grsZ, intLin, i, dtFecha, LlenaChar("-", 40)
+        strTexto = "Total: "
+        strTexto = Llena(strTexto, 11) & _
+                   LlenaIzqChar(Format(curBase, "Currency"), 14, ".") & _
+                   LlenaIzqChar(Format(curTotal, "Currency"), 14, ".")
+        PonLineaZ grsZ, intLin, i, dtFecha, strTexto
+    End If
+DesgloseArticulos:
+    If DameValorParam("ZsDesgloseXArticulos") = False Then GoTo DesgloseCamareros
+    strSQL = "SELECT auxRegistroVentas.Concepto, Sum(auxRegistroVentas.Cantidad) AS SumaDeCantidad, Sum(auxRegistroVentas.Importe) AS SumaDeImporte"
+    strSQL = strSQL & " FROM auxRegistroVentas LEFT JOIN tbArtV ON auxRegistroVentas.IdArticulo = tbArtV.IdArtV"
+    strSQL = strSQL & " GROUP BY Concepto, Nz(tbArtV.IdArtV,0)"
+    strSQL = strSQL & " ORDER BY Concepto, Nz(tbArtV.IdArtV,0)"
+    Set rs = CurrentDb.OpenRecordset(strSQL, dbOpenSnapshot)
+    If Not rs.EOF Then
+        PonCabeceraZ grsZ, intLin, dtFecha, _
+            Centra("Desglose por artículos", 40), _
+            Centra("ARTÍCULO", 20) & " Ct. " & Centra("Total", 14), _
+            LlenaChar("-", 25) & " " & LlenaChar("-", 14)
+    End If
+    curBase = 0: curTotal = 0: i = 0
+    
+    While Not rs.EOF
+        curB = Nz(rs("SumaDeCantidad"), 0)
+        curT = Nz(rs("SumaDeImporte"), 0)
+        strTXT = Llena(Nz(rs("Concepto"), ""), 20) & LlenaIzqChar(CStr(curB), 4, " ")
+        strTexto = Llena(strTXT, 24) & " " & _
+                   LlenaIzq(Format(curT, "Currency"), 14)
+        PonLineaZ grsZ, intLin, i, dtFecha, strTexto
+        curBase = curBase + curB
+        curTotal = curTotal + curT
+        rs.MoveNext
+    Wend
+    If i > 1 Then
+        PonLineaZ grsZ, intLin, i, dtFecha, LlenaChar("-", 40)
+        strTexto = "Total: "
+        strTexto = Llena(strTexto, 24) & " " & _
+                   LlenaIzqChar(Format(curTotal, "Currency"), 14, " ")
+        PonLineaZ grsZ, intLin, i, dtFecha, strTexto
+    End If
+DesgloseCamareros:
+    If Nz(DameValorParam("ZsDesgloseXCamareros"), True) = False Then GoTo PresenciaCamareros
+    'DESGLOSE CAMAREROS
+    strSQL = "SELECT tbBarm.Barman, Sum(auxRegistroVentasZ_Clientes_IVA.Total) AS SumaDeTotal"
+    strSQL = strSQL & " FROM auxRegistroVentasZ_Clientes_IVA LEFT JOIN tbBarm ON auxRegistroVentasZ_Clientes_IVA.IdBarm = tbBarm.IdBarm"
+    strSQL = strSQL & " GROUP BY tbBarm.Barman, tbBarm.CodBarman"
+    strSQL = strSQL & " ORDER BY tbBarm.CodBarman;"
+    Set rs = CurrentDb.OpenRecordset(strSQL, dbOpenSnapshot)
+    If Not rs.EOF Then
+        PonCabeceraZ grsZ, intLin, dtFecha, _
+            Centra("Desglose por Empleadas/os", 40), _
+            Centra("Empleada/o", 20) & " " & Centra("Total", 19), _
+            LlenaChar("-", 20) & " " & LlenaChar("-", 19)
+    End If
+    curBase = 0: curTotal = 0: i = 0
+    While Not rs.EOF
+        curT = rs("SumaDeTotal")
+        strBarm = Nz(rs("Barman"), "?")
+        strTexto = Llena(strBarm, 20) & " " & LlenaIzq(Format(curT, "Currency"), 19)
+        PonLineaZ grsZ, intLin, i, dtFecha, strTexto
+        rs.MoveNext
+        curTotal = curTotal + curT
+    Wend
+    If i > 1 Then
+        PonLineaZ grsZ, intLin, i, dtFecha, LlenaChar("-", 40)
+        strTexto = "Total: "
+        strTexto = Llena(strTexto, 20) & " " & _
+                   LlenaIzqChar(Format(curTotal, "Currency"), 19, " ")
+        PonLineaZ grsZ, intLin, i, dtFecha, strTexto
+    End If
+    
+PresenciaCamareros:
+    If Nz(DameValorParam("ZsPresenciaCamareros"), True) = False Then GoTo DesgloseHorario
+    'PRESENCIA CAMAREROS
+    Actualizar_auxPresenciaCamareros dtFecha
+    
+    strSQL = "SELECT * FROM auxPresenciaCamareros ORDER BY CodBarman, Entra"
+    Set rs = CurrentDb.OpenRecordset(strSQL, dbOpenSnapshot)
+    If Not rs.EOF Then
+        PonCabeceraZ grsZ, intLin, dtFecha, _
+            Centra("Presencia de Empleadas/os", 40), _
+            Centra("Empleada/o", 10) & " " & Centra("Entra", 9) & " " & Centra("Sale", 9) & " " & Centra("Total", 9), _
+            LlenaChar("-", 10) & " " & LlenaChar("-", 9) & " " & LlenaChar("-", 9) & " " & LlenaChar("-", 9)
+    End If
+    lngIdBarm = 0
+    While Not rs.EOF
+        If rs("IdBarm") <> lngIdBarm Then
+            If lngIdBarm <> 0 And i2 > 1 Then
+                PonLineaZ grsZ, intLin, i, dtFecha, _
+                Llena(strBarm, 10) & " " & Llena("Total", 9) & " " & LlenaIzq(DameHHMM(0, curT), 19) 'strTexto
+            End If
+            If lngIdBarm <> 0 Then
+                PonLineaZ grsZ, intLin, i, dtFecha, _
+                LlenaChar("-", 40)
+            End If
+            lngIdBarm = rs("IdBarm")
+            curT = 0
+            i2 = 0
+        End If
+        strBarm = Nz(rs("Camarero"), "?")
+        PonLineaZ grsZ, intLin, i, dtFecha, _
+        Llena(strBarm, 10) & " " & LlenaIzq(Format(rs("Entra"), "HH:NN"), 9) & " " & LlenaIzq(Format(rs("Sale"), "HH:NN"), 9) & " " & LlenaIzq(DameHHMM(0, rs("Tiempo")), 9)
+        curT = curT + Nz(rs("Tiempo"), 0)
+        i2 = i2 + 1
+        rs.MoveNext
+    Wend
+    If lngIdBarm <> 0 And i2 > 1 Then
+        PonLineaZ grsZ, intLin, i, dtFecha, _
+        Llena(strBarm, 10) & " " & Llena("Total", 9) & " " & LlenaIzq(DameHHMM(0, curT), 19) 'strTexto
+    End If
+    If lngIdBarm <> 0 Then
+        PonLineaZ grsZ, intLin, i, dtFecha, _
+        LlenaChar("-", 40)
+    End If
+    
+DesgloseHorario:
+    If Nz(DameValorParam("ZsDesgloseHorario"), True) = False Then GoTo DesgloseTiposTiques
+    Dim strNextHora As String, strHH As String
+    CurrentDb.Execute "DELETE * FROM auxDesgloseHorario", dbFailOnError
+    strSQL = "INSERT INTO auxDesgloseHorario ( Fecha, Hora_, [Tiques Hora], [Importe Hora] )"
+    strSQL = strSQL & " SELECT qryRegistroVentas_Tiques.Fecha, Format([Hora],'hh') AS Hora_, Count(qryRegistroVentas_Tiques.AutoNum) AS [Tiques Hora], Sum(qryRegistroVentas_Tiques.[Total Tique]) AS [Importe Hora]"
+    strSQL = strSQL & " FROM qryRegistroVentas_Tiques"
+    strSQL = strSQL & " GROUP BY qryRegistroVentas_Tiques.Fecha, Format([Hora],'hh');"
+    CurrentDb.Execute strSQL, dbFailOnError
+    Set rs = CurrentDb.OpenRecordset("auxDesgloseHorario", dbOpenDynaset)
+    strHH = Nz(DameValorParam("TicketsHoraCambioDia"), "05:00")
+    While Not rs.EOF
+        If rs("Hora_") < strHH Then
+            rs.Edit
+            rs("Fecha") = rs("Fecha") + 1
+            rs.Update
+        End If
+        rs.MoveNext
+    Wend
+    strSQL = "SELECT * FROM auxDesgloseHorario"
+    strSQL = strSQL & " ORDER BY Fecha, Hora_"
+    Set rs = CurrentDb.OpenRecordset(strSQL, dbOpenSnapshot)
+    If Not rs.EOF Then
+        PonCabeceraZ grsZ, intLin, dtFecha, _
+            Centra("Desglose Horario", 40), _
+            Centra("HORA", 10) & " " & Centra("Nº Tiques", 14) & " " & Centra("Importe", 14), _
+            LlenaChar("-", 10) & " " & LlenaChar("-", 14) & " " & LlenaChar("-", 14)
+    End If
+    curBase = 0: curTotal = 0: i = 0
+    While Not rs.EOF
+        If strNextHora <> "" And rs("HORA_") <> strNextHora Then
+            While rs("HORA_") <> strNextHora
+                strTXT = Llena(strNextHora, 10) & " " & LlenaIzq("-", 14) & " " & LlenaIzq("-", 14)
+                PonLineaZ grsZ, intLin, i, dtFecha, strTXT
+                strNextHora = Format(CInt(strNextHora) + 1, "00")
+                If strNextHora = "24" Then strNextHora = "00"
+            Wend
+        End If
+        curBase = Nz(rs("Tiques Hora"), 0) + curBase
+        curTotal = Nz(rs("Importe Hora"), 0) + curTotal
+        strTXT = Llena(rs("HORA_"), 10) & " " & LlenaIzq(Format(rs("Tiques Hora"), "0"), 14) & " " & LlenaIzq(Format(rs("Importe Hora"), "Currency"), 14)
+        PonLineaZ grsZ, intLin, i, dtFecha, strTXT
+        strNextHora = Format(CInt(rs("HORA_")) + 1, "00")
+        If strNextHora = "24" Then strNextHora = "00"
+        rs.MoveNext
+    Wend
+    If i > 1 Then
+        PonLineaZ grsZ, intLin, i, dtFecha, LlenaChar("-", 40)
+        strTexto = "Total: "
+        strTexto = Llena(strTexto, 20) & " " & _
+                   LlenaIzqChar(Format(curTotal, "Currency"), 19, " ")
+        PonLineaZ grsZ, intLin, i, dtFecha, strTexto
+    End If
+
+DesgloseTiposTiques:
+    If DameValorParam("ZsDesgloseXTipoDeTiques") = False Then GoTo CajaXFormasDePago
+    strSQL = "SELECT auxRegistroVentasZ_Clientes_IVA.TipoTique, tbTipTick.TipoTicket, Sum(auxRegistroVentasZ_Clientes_IVA.Base) AS SumaDeBase, Sum(auxRegistroVentasZ_Clientes_IVA.Total) AS SumaDeTotal"
+    strSQL = strSQL & " FROM auxRegistroVentasZ_Clientes_IVA LEFT JOIN tbTipTick ON auxRegistroVentasZ_Clientes_IVA.TipoTique = tbTipTick.CodTipTick"
+    strSQL = strSQL & " GROUP BY auxRegistroVentasZ_Clientes_IVA.TipoTique, tbTipTick.TipoTicket"
+    strSQL = strSQL & " ORDER BY auxRegistroVentasZ_Clientes_IVA.TipoTique;"
+    Set rs = CurrentDb.OpenRecordset(strSQL, dbOpenSnapshot)
+    If Not rs.EOF Then
+        PonCabeceraZ grsZ, intLin, dtFecha, _
+            Centra("Desglose por tipos de tique", 40), _
+            Centra("TIPO", 10) & " " & Centra("Base", 14) & " " & Centra("Total", 14), _
+            LlenaChar("-", 10) & " " & LlenaChar("-", 14) & " " & LlenaChar("-", 14)
+    End If
+    curBase = 0: curTotal = 0: i = 0
+    While Not rs.EOF
+        curB = rs("SumaDeBase")
+        curT = rs("SumaDeTotal")
+        strTXT = Nz(rs("TipoTicket"), "?")
+        strTXT = Llena(strTXT, 10) & " " & LlenaIzq(Format(curB, "Currency"), 14) & " " & LlenaIzq(Format(curT, "Currency"), 14)
+        PonLineaZ grsZ, intLin, i, dtFecha, strTXT
+        curBase = curBase + curB
+        curTotal = curTotal + curT
+        rs.MoveNext
+    Wend
+    If i > 1 Then
+        PonLineaZ grsZ, intLin, i, dtFecha, LlenaChar("-", 40)
+        strTexto = "Total: "
+        strTexto = Llena(strTexto, 20) & " " & _
+                   LlenaIzqChar(Format(curTotal, "Currency"), 19, " ")
+        PonLineaZ grsZ, intLin, i, dtFecha, strTexto
+    End If
+
+CajaXFormasDePago:
+    If DameValorParam("ZsCajaXFormaDePago") = False Then GoTo TiquesPendientes
+    PonCabeceraZ grsZ, intLin, dtFecha, _
+        Centra("Caja por Formas de Pago", 40), _
+        Centra("TIPO", 10) & " " & Centra("Base", 14) & " " & Centra("Total", 14), _
+        LlenaChar("-", 10) & " " & LlenaChar("-", 14) & " " & LlenaChar("-", 14)
+    
+    strSQL = "SELECT auxRegistroVentasZ_FormasPago.FormaPago, Sum(auxRegistroVentasZ_FormasPago.Pagado) AS SumaDePagado"
+    strSQL = strSQL & " FROM auxRegistroVentasZ_FormasPago"
+    strSQL = strSQL & " GROUP BY auxRegistroVentasZ_FormasPago.FormaPago;"
+    Set rs = CurrentDb.OpenRecordset(strSQL)
+    i = 0
+    curTotal = 0
+    While Not rs.EOF
+        curT0 = Nz(rs("SumaDePagado"), 0)
+        strTXT = Llena(rs("FormaPago") & LlenaChar(".", 20), 20) & LlenaIzq(LlenaChar(".", 20) & Format(curT0, "Currency"), 20)
+        PonLineaZ grsZ, intLin, i, dtFecha, strTXT
+        curTotal = curTotal + curT0
+        rs.MoveNext
+    Wend
+    If i > 1 Then ' si hay más de una forma de pago poner el total
+        PonLineaZ grsZ, intLin, i, dtFecha, LlenaChar("-", 40)
+        strTexto = "Total: "
+        strTexto = Llena(strTexto, 20) & " " & _
+                   LlenaIzqChar(Format(curTotal, "Currency"), 19, " ")
+        PonLineaZ grsZ, intLin, i, dtFecha, strTexto
+    End If
+TiquesPendientes:
+    If DameValorParam("ZsTiquesPendientesDePago") = False Then GoTo DetallePagosTarjeta
+    'TIQUETS CON PAGOS PENDIENTES....................................
+    strSQL = "SELECT qryAuxZTotalImporte.Serie, qryAuxZTotalImporte.NumTicket, qryAuxZTotalImporte.SumaDeTotal, qryAuxZTotalPagado.SumaDePagado"
+    strSQL = strSQL & " FROM qryAuxZTotalImporte LEFT JOIN qryAuxZTotalPagado ON (qryAuxZTotalImporte.NumTicket = qryAuxZTotalPagado.NumTicket) AND (qryAuxZTotalImporte.Serie = qryAuxZTotalPagado.Serie);"
+
+    Set rs = CurrentDb.OpenRecordset(strSQL)
+    i = 0: curTotal = 0
+    If Not rs.EOF Then
+        PonCabeceraZ grsZ, intLin, dtFecha, _
+            Centra("Tiques pendientes de pago", 40), _
+            Centra("Tique Nº", 15) & Centra("Pendiente de pago", 25), _
+            LlenaChar("-", 40)
+    End If
+    While Not rs.EOF
+        curP = Redondea(Nz(rs("SumaDeTotal"), 0) - Nz(rs("SumadePagado"), 0), 1) ' aquí 1 decimal para que ignore diferencias menores de 5 céntimos
+        If curP <> 0 Then
+            curP = Redondea(Nz(rs("SumaDeTotal"), 0) - Nz(rs("SumadePagado"), 0), 2)
+            curTotal = curTotal + curP
+            strTXT = Llena(rs("Serie") & Format(rs("NumTicket"), "00000"), 15) & LlenaIzq(LlenaChar(".", 25) & Format(curP, "Currency"), 25)
+            PonLineaZ grsZ, intLin, i, dtFecha, strTXT
+        End If
+        rs.MoveNext
+    Wend
+    If i > 1 Then ' si hay más de un tiquet pendiente
+        PonLineaZ grsZ, intLin, i, dtFecha, LlenaChar("-", 40)
+        PonLineaZ grsZ, intLin, i, dtFecha, Llena("TOTAL PENDIENTE", 15) & LlenaIzq(Format(curTotal, "Currency"), 25)
+    End If
+
+DetallePagosTarjeta:
+    'If Nz(DameValorParam("ZsDetallePagosTarjeta"), True) = False Then GoTo TiquesAnulados
+    If Nz(DameValorParam("ZsDetallePagosTarjeta"), True) = False Then GoTo DetallePagosCaja
+    Dim vCodFPago As Variant, strFPTarjeta As String, intT2 As Integer
+    vCodFPago = Nz(DameValorParam("TPV_FormaPagoTarjeta"), -1)
+VerCodFPago:
+    If vCodFPago = -1 Then GoTo DetallePagosCaja
+    strFPTarjeta = Nz(DLookup("Descripcion", "tbFPago", "CodFPago = '" & vCodFPago & "'"), "")
+    strSQL = "SELECT Format(Fecha,'HH:NN') as Hora, Serie, NumTicket, Pagado, IdFactura"
+    strSQL = strSQL & " FROM auxRegistroVentasZ_FormasPago"
+    strSQL = strSQL & " WHERE FormaPago = " & ConComillas(strFPTarjeta)
+    strSQL = strSQL & " ORDER BY Fecha"
+    Set rs = CurrentDb.OpenRecordset(strSQL)
+    i = 0
+    curTotal = 0
+    If Not rs.EOF Then
+        If Not intT2 Then
+            PonCabeceraZ grsZ, intLin, dtFecha, _
+                Centra("Detalle de pagos con tarjeta", 40), _
+                Centra("Nº tique - Factura", 20) & " " & Centra("Hora", 6) & " " & Centra("Pagado", 12), _
+                LlenaChar("-", 20) & " " & LlenaChar("-", 6) & " " & LlenaChar("-", 12)
+        End If
+        If Nz(DameValorParam("TPV_FormaPagoTarjeta2"), -1) <> -1 Then
+            strTXT = Llena(strFPTarjeta & LlenaChar(".", 40), 40)
+            PonLineaZ grsZ, intLin, i, dtFecha, strTXT
+        End If
+    End If
+    curTotal = 0: i = 0
+    intVerNumFac = Nz(DameValorParam("FacturasVerNumFacSN"), True)
+    While Not rs.EOF
+        If Nz(rs("IdFactura"), 0) <= 0 Or Not intVerNumFac Then
+            strTXT = Llena(rs("Serie") & Format(rs("NumTicket"), "000"), 20) & Centra(rs("Hora"), 8) & LlenaIzqChar(Format(rs("Pagado"), "standard"), 12, ".")
+        Else
+            strTXT = Llena(rs("Serie") & Format(rs("NumTicket"), "000") & " - " & DLookup("[Serie] & [NumeroDeFactura]", "tbFacturasCab", "IdFactura = " & rs("IdFactura")), 20) & Centra(rs("Hora"), 8) & LlenaIzqChar(Format(rs("Pagado"), "standard"), 12, ".")
+        End If
+        
+        PonLineaZ grsZ, intLin, i, dtFecha, strTXT
+        curTotal = curTotal + rs("Pagado")
+        rs.MoveNext
+    Wend
+    If i > 1 Then
+        PonLineaZ grsZ, intLin, i, dtFecha, LlenaChar("-", 40)
+        strTexto = "Total: "
+        strTexto = Llena(strTexto, 20) & " " & _
+                   LlenaIzqChar(Format(curTotal, "standard"), 19, " ")
+        PonLineaZ grsZ, intLin, i, dtFecha, strTexto
+    End If
+    If intT2 Then GoTo DetallePagosCaja
+    intT2 = True
+    vCodFPago = Nz(DameValorParam("TPV_FormaPagoTarjeta2"), -1)
+    GoTo VerCodFPago:
+DetallePagosCaja:
+    If DameValorParam("ZsDetallePagosDeCaja") = False Then GoTo TiquesAnulados
+    strSQL = "SELECT auxRegistroVentasZ_FormasPago.Concepto, auxRegistroVentasZ_FormasPago.FormaPago, auxRegistroVentasZ_FormasPago.Pagado"
+    strSQL = strSQL & " FROM auxRegistroVentasZ_FormasPago"
+    strSQL = strSQL & " WHERE (((auxRegistroVentasZ_FormasPago.NumTicket)=-1));"
+    Set rs = CurrentDb.OpenRecordset(strSQL)
+    i = 0: curTotal = 0
+    While Not rs.EOF
+        If i = 0 Then
+            PonCabeceraZ grsZ, intLin, dtFecha, _
+                Centra("Pagos de caja", 40), _
+                Centra("Concepto", 30) & Centra("Importe", 10), _
+                LlenaChar("-", 30) & " " & LlenaChar("-", 9)
+        End If
+        
+        strTexto = Llena(rs("Concepto") & LlenaChar(".", 30), 30) & LlenaIzq(LlenaChar(".", 10) & Format(rs("Pagado"), "Currency"), 10)
+        PonLineaZ grsZ, intLin, i, dtFecha, strTexto
+        curTotal = curTotal + rs("Pagado")
+        rs.MoveNext
+    Wend
+    If i > 1 Then '
+        PonLineaZ grsZ, intLin, i, dtFecha, LlenaChar("-", 40)
+        PonLineaZ grsZ, intLin, i, dtFecha, Llena("TOTAL PAGOS", 15) & LlenaIzq(Format(curTotal, "Currency"), 25)
+    End If
+
+TiquesAnulados:
+    If DameValorParam("ZsTiquesAnulados") = False Then GoTo Devoluciones
+    strSQL = "SELECT tbBarm.Barman, auxRegistroVentasZ_Clientes_IVA.NumTicket, First(auxRegistroVentasZ_FormasPago.Pagado) AS SumaDePagado"
+    strSQL = strSQL & " FROM (auxRegistroVentasZ_FormasPago RIGHT JOIN auxRegistroVentasZ_Clientes_IVA ON auxRegistroVentasZ_FormasPago.NumTicket = auxRegistroVentasZ_Clientes_IVA.NumTicket) LEFT JOIN tbBarm ON auxRegistroVentasZ_Clientes_IVA.IdBarm = tbBarm.IdBarm"
+    strSQL = strSQL & " GROUP BY tbBarm.Barman, auxRegistroVentasZ_Clientes_IVA.NumTicket, auxRegistroVentasZ_Clientes_IVA.TipoTique, auxRegistroVentasZ_FormasPago.Concepto"
+    strSQL = strSQL & " HAVING (((auxRegistroVentasZ_Clientes_IVA.TipoTique) = -1) And ((auxRegistroVentasZ_FormasPago.Concepto) = 'ANULADO'))"
+    strSQL = strSQL & " ORDER BY auxRegistroVentasZ_Clientes_IVA.NumTicket;"
+    Set rs = CurrentDb.OpenRecordset(strSQL, dbOpenSnapshot)
+    If Not rs.EOF Then
+        PonCabeceraZ grsZ, intLin, dtFecha, _
+            Centra("Tiques Anulados", 40), _
+            Centra("Empleado", 14) & " " & Centra("Nº Tique", 10) & " " & Centra("Imp. Anulado", 14), _
+            LlenaChar("-", 14) & " " & LlenaChar("-", 10) & " " & LlenaChar("-", 14)
+    End If
+    curTotal = 0: i = 0
+    
+    While Not rs.EOF
+        curT = rs("SumaDePagado")
+        curTotal = curTotal + curT
+        strTXT = Nz(rs("Barman"), "?")
+        strTXT = Llena(strTXT, 14) & " " & LlenaIzq(Format(rs("NumTicket"), "#,##0"), 10) & " " & LlenaIzq(Format(curT, "Currency"), 14)
+        PonLineaZ grsZ, intLin, i, dtFecha, strTXT
+        rs.MoveNext
+    Wend
+    If i > 1 Then
+        PonLineaZ grsZ, intLin, i, dtFecha, LlenaChar("-", 40)
+        PonLineaZ grsZ, intLin, i, dtFecha, Llena("TOTAL PAGOS", 15) & LlenaIzq(Format(curTotal, "Currency"), 25)
+    End If
+
+Devoluciones:
+    If Nz(DameValorParam("ZsDevoluciones"), True) = False Then GoTo Invitaciones
+    strSQL = "SELECT auxRegistroVentas.AutoNum, tbBarm.Barman, qryAuxRegistoVentasCab.NumTicket, auxRegistroVentas.Cantidad, auxRegistroVentas.Precio, auxRegistroVentas.Importe, auxRegistroVentas.Concepto, qryAuxRegistoVentasCab.Fecha, qryAuxRegistoVentasCab.Hora"
+    strSQL = strSQL & " FROM (auxRegistroVentas INNER JOIN qryAuxRegistoVentasCab ON auxRegistroVentas.NumFactura = qryAuxRegistoVentasCab.NumFactura) LEFT JOIN tbBarm ON qryAuxRegistoVentasCab.IdBarm = tbBarm.IdBarm"
+    strSQL = strSQL & " WHERE qryAuxRegistoVentasCab.TipoTique <> -1 And (auxRegistroVentas.Cantidad < 0 OR auxRegistroVentas.Precio < 0)"
+    strSQL = strSQL & " ORDER BY qryAuxRegistoVentasCab.NumTicket;"
+    Set rs = CurrentDb.OpenRecordset(strSQL, dbOpenSnapshot)
+    If Not rs.EOF Then
+        PonCabeceraZ grsZ, intLin, dtFecha, _
+            Centra("Devoluciones", 40), _
+            Centra("Concepto", 17) & " " & Centra("Tique", 7) & " " & Centra("Imp.Devolución", 14), _
+            LlenaChar("-", 17) & " " & LlenaChar("-", 7) & " " & LlenaChar("-", 14)
+    End If
+    curTotal = 0: i = 0
+    While Not rs.EOF
+        curT = rs("Importe")
+        curTotal = curTotal + curT
+        strTXT = rs("Cantidad") & " " & rs("Concepto")
+        strTXT = Llena(strTXT, 17) & " " & LlenaIzq(Format(rs("NumTicket"), "#,##0"), 7) & " " & LlenaIzq(Format(curT, "Currency"), 14)
+        PonLineaZ grsZ, intLin, i, dtFecha, strTXT
+        rs.MoveNext
+    Wend
+    If i > 1 Then
+        PonLineaZ grsZ, intLin, i, dtFecha, LlenaChar("-", 40)
+        PonLineaZ grsZ, intLin, i, dtFecha, Llena("TOTAL PAGOS", 15) & LlenaIzq(Format(curTotal, "Currency"), 25)
+    End If
+    
+
+Invitaciones:
+    'GoTo CajaXFormasDePago
+    
+    rs.Close
+    If Nz(DameValorParam("ZsInvitaciones"), True) = False Then GoTo LineasBorradas
+    'ACTUALIZAR_auxRegistroVentas dtFecha, dtFecha, , , lngIdPuesto
+    
+    strSQL = "SELECT auxRegistroVentas.IdArticulo, tbBarm.Barman, Sum(auxRegistroVentas.Cantidad) AS SumaDeCantidad, auxRegistroVentas.Concepto, InvitacionSN"
+    strSQL = strSQL & " FROM auxRegistroVentas LEFT JOIN tbBarm ON auxRegistroVentas.IdBarm = tbBarm.IdBarm"
+    strSQL = strSQL & " WHERE InvitacionSN = True"
+    strSQL = strSQL & " GROUP BY auxRegistroVentas.IdArticulo, tbBarm.Barman, auxRegistroVentas.Concepto, InvitacionSN;"
+    Set rs = CurrentDb.OpenRecordset(strSQL)
+    If Not rs.EOF Then
+        PonCabeceraZ grsZ, intLin, dtFecha, _
+            Centra("Invitaciones", 40), _
+            Centra("Empleada/o", 10) & Centra("Artículo", 20) & Centra("Importe", 10), _
+            LlenaChar("-", 40)
+    End If
+    i = 0: curTotal = 0
+    Dim lngIdTrf As Long
+    lngIdTrf = Nz(DameValorParam("PuestoTarifaPredeterminada"), 0)
+    While Not rs.EOF
+        curT0 = Nz(rs("SumaDeCantidad"), 0) * DamePrecioArtV(Nz(rs("IdArticulo"), 0), lngIdTrf, False)
+        strTXT = Llena(Nz(rs("Barman"), ""), 10) & LlenaIzq(Nz(rs("SumaDeCantidad"), 0), 5) & Llena(" " & rs("Concepto"), 15) & LlenaIzq(LlenaChar(".", 10) & Format(curT0, "Currency"), 10)
+        PonLineaZ grsZ, intLin, i, dtFecha, strTXT
+        curTotal = curTotal + curT0
+        rs.MoveNext
+    Wend
+    If i > 1 Then ' si hay más de una forma de pago poner el total
+        PonLineaZ grsZ, intLin, i, dtFecha, LlenaChar("-", 40)
+        PonLineaZ grsZ, intLin, i, dtFecha, Llena("TOTAL INVITACIONES", 20) & LlenaIzq(Format(curTotal, "Currency"), 20)
+    End If
+LineasBorradas:
+    If Nz(DameValorParam("ZsLineasBorradas"), False) = False Then GoTo RegistroFacturas
+    ACTUALIZAR_auxLineasBorradas dtFecha, dtFecha, , , , lngIdPuesto
+    PonCabeceraZ grsZ, intLin, dtFecha, _
+        Centra("Líneas Borradas", 40), , _
+        LlenaChar("-", 40)
+    strSQL = "SELECT Count(auxLineasBorradas.IdLineaBorrada) AS Cuenta, Sum([Cantidad]*[Precio]) AS Importe"
+    strSQL = strSQL & " FROM auxLineasBorradas;"
+    Set rs = CurrentDb.OpenRecordset(strSQL)
+    While Not rs.EOF ' sólo debe haber un
+        If rs("Cuenta") = 0 Then
+            strTXT = Centra("No se encontraron líneas borradas", 40)
+            PonLineaZ grsZ, intLin, i, dtFecha, strTXT
+        Else
+            strTXT = RecDerTop(rs("Cuenta") & " línea" & IIf(rs("Cuenta") > 1, "s borradas", " borrada") & " por un total de" & LlenaChar(".", 10), 0, 40)
+            PonLineaZ grsZ, intLin, i, dtFecha, strTXT
+            strTXT = LlenaIzqChar(Format(rs("Importe"), "currency"), 40, ".", True)
+            PonLineaZ grsZ, intLin, i, dtFecha, strTXT
+        End If
+        rs.MoveNext
+    Wend
+            
+RegistroFacturas:
+    If Nz(DameValorParam("ZsFacturas"), True) = False Then GoTo FinalZ
+    strSQL = "SELECT tbFacturasCab.Serie, tbFacturasCab.NumeroDeFactura, tbFacturasCab.DireccionCliente, tbFacturasCab.TotalBase, tbFacturasCab.IVA_Cab, [TotalBase]+[TotalIVA]+Nz([TotalRE],0) AS TotalImporte, tbFacturasCab.NumTique, tbFacturasCab.NIF, auxRegistroVentasZ_FormasPago.FormaPago, auxRegistroVentasZ_FormasPago.Pagado"
+    strSQL = strSQL & " FROM tbFacturasCab LEFT JOIN auxRegistroVentasZ_FormasPago ON tbFacturasCab.IdFactura = auxRegistroVentasZ_FormasPago.IdFactura"
+    strSQL = strSQL & " WHERE tbFacturasCab.FechaFactura = " & CLng(dtFecha)
+    Dim intSoloCli As Integer
+    If Nz(DameValorParam("ZsFacturasSoloCliente"), True) = True Then
+        strSQL = strSQL & " AND Len(Nz(NIF,''))>1"
+        intSoloCli = True
+    End If
+    strSQL = strSQL & " ORDER BY tbFacturasCab.Serie, tbFacturasCab.NumeroDeFactura;"
+    
+    Set rs = CurrentDb.OpenRecordset(strSQL)
+    If Not rs.EOF Then
+        PonCabeceraZ grsZ, intLin, dtFecha, _
+            Centra("Facturas" & IIf(intSoloCli, " (sólo clientes)", ""), 40), _
+            Centra("Nº Factura-Tique", 25) & Centra("Importe", 15), _
+            LlenaChar("-", 40)
+    End If
+    i = 0: curTotal = 0
+    Dim strAntFact As String
+    While Not rs.EOF
+        'curT0 = Nz(rs("SumaDeCantidad"), 0) * DamePrecioArtV(Nz(rs("IdArticulo"), 0), lngIdTrf, False)
+        'strTxt = Llena(Nz(rs("Barman"), ""), 10) & LlenaIzq(Nz(rs("SumaDeCantidad"), 0), 5) & Llena(" " & rs("Concepto"), 15) & LlenaIzq(LlenaChar(".", 10) & Format(curT0, "Currency"), 10)
+        curT0 = Nz(rs("TotalImporte"), 0)
+        If strAntFact <> rs("Serie") & "-" & rs("NumeroDeFactura") & "-" & rs("NumTique") Then
+            strAntFact = rs("Serie") & "-" & rs("NumeroDeFactura") & "-" & rs("NumTique")
+            strTXT = ""
+            If Nz(DameValorParam("FacturasVerNumFacSN"), True) = True Then
+                strTXT = strTXT & rs("Serie") & "-" & rs("NumeroDeFactura")
+            End If
+            If Nz(DameValorParam("FacturasVerNumTicSN"), True) = True Then
+                strTXT = strTXT & IIf(strTXT = "", "", "-") & rs("NumTique")
+            End If
+            strTXT = Llena(strTXT, 24) & " " & LlenaIzqChar(Format(Nz(rs("TotalImporte"), 0), "currency"), 15, ".")
+            PonLineaZ grsZ, intLin, i, dtFecha, strTXT
+            curTotal = curTotal + curT0
+            If Len(Nz(rs("NIF"), "")) > 1 Then 'intSoloCli Then
+                strTXT = Llena(rs("NIF") & " - " & Replace(rs("DireccionCliente"), vbCrLf, " "), 40)
+                PonLineaZ grsZ, intLin, i, dtFecha, strTXT
+                'If intSoloCli = False Then
+                '    strTxt = Centra("..........", 40)
+                '    PonLineaZ grsZ, intLin, 0, dtFecha, strTxt
+                'End If
+            End If
+        End If
+        If Nz(rs("Pagado"), 0) <> 0 Then
+            strTXT = Llena(rs("FormaPago"), 10) & LlenaIzqChar(Format(rs("Pagado"), "currency"), 15, ".")
+            PonLineaZ grsZ, intLin, 0, dtFecha, strTXT
+        End If
+        rs.MoveNext
+    Wend
+    If i > 1 Then ' si hay más de una factura poner el total
+        PonLineaZ grsZ, intLin, i, dtFecha, LlenaChar("-", 40)
+        PonLineaZ grsZ, intLin, i, dtFecha, Llena("TOTAL FACTURAS" & IIf(intSoloCli, " (clientes)", ""), 25) & LlenaIzq(Format(curTotal, "Currency"), 15)
+        strSQL = "SELECT auxRegistroVentasZ_FormasPago.FormaPago, Sum(auxRegistroVentasZ_FormasPago.Pagado) as SumPagado"
+        strSQL = strSQL & " FROM tbFacturasCab LEFT JOIN auxRegistroVentasZ_FormasPago ON tbFacturasCab.IdFactura = auxRegistroVentasZ_FormasPago.IdFactura"
+        strSQL = strSQL & " WHERE tbFacturasCab.FechaFactura = " & CLng(dtFecha)
+        If intSoloCli = True Then
+            strSQL = strSQL & " AND Len(Nz(NIF,''))>1"
+        End If
+        strSQL = strSQL & " GROUP BY auxRegistroVentasZ_FormasPago.FormaPago"
+        strSQL = strSQL & " ORDER BY auxRegistroVentasZ_FormasPago.FormaPago"
+        Set rs = CurrentDb.OpenRecordset(strSQL)
+        While Not rs.EOF
+            If Nz(rs("SumPagado"), 0) <> 0 Then
+                strTXT = Llena(rs("FormaPago"), 10) & LlenaIzqChar(Format(rs("SumPagado"), "currency"), 15, ".")
+                PonLineaZ grsZ, intLin, 0, dtFecha, strTXT
+            End If
+            rs.MoveNext
+        Wend
+    End If
+
+FinalZ:
+    Dim sC As String, sC2 As String
+    For i = 1 To 3
+        grsZ.AddNew
+        grsZ("Fecha") = dtFecha
+        intLin = intLin + 1
+        grsZ("linea") = intLin
+        sC = IIf(i = 1, "Z", " ")
+        sC2 = IIf(i = 1, "z", " ")
+        If curDism = 0 Then
+            grsZ("TextoLinea") = Centra(LlenaChar(sC, 20), 40)
+        Else
+            grsZ("TextoLinea") = Centra(LlenaChar(sC, 10) & LlenaChar(sC2, 10), 40)
+        End If
+        grsZ.Update
+    Next i
+    
+Salir_RellenarZs:
+    Exit Sub
+Error_RellenarZs:
+    Select Case Err
+        Case Else
+            MsgBox "Error nº " & Err & vbCrLf & Err.Description & vbCrLf & "En RellenarZ"
+    End Select
+    Resume 'Salir_RellenarZs
+End Sub
+
+
+Public Sub ActualizarEF_auxRegistroVentas(dtDesde As Date, dtHasta As Date, Optional lngIdPuesto As Long = 0)
+    Dim i As Integer, intPas As Integer
+    Dim rs As Recordset, rsAux As Recordset
+    Dim strSQL As String, lngL As Long
+    Dim db As Database, strMDB As String, intHisVta As Integer
+    Dim strNumFac As String, intLin As Integer, dtFec As Date, strNIF As String, strCli As String
+    Dim curTotal As Currency
+    On Error GoTo Error_ActualizarEF_auxRegistroVentas
+    strSQL = "DELETE * FROM auxRegistroVentas"
+    CurrentDb.Execute strSQL
+    Set rsAux = CurrentDb.OpenRecordset("auxRegistroVentas")
+    strSQL = "SELECT tbTickCab.Serie, tbTickCab.NumTicket, tbTickCab.Fecha, [Adultos]+[Niños] AS Comensales, tbArtV.IdArtV, tbFam_Art.IdFamilia, tbSec_Art.IdSeccion, tbTickCab.IvaInc_Det, tbTickDet.Cantidad,"
+    If DameValorParam("ListadoVentasConceptoSegun") = 1 Then
+        strSQL = strSQL & " tbTickDet.Concepto,"
+    Else
+        strSQL = strSQL & " tbArtV.ArticuloVenta as Concepto,"
+    End If
+    strSQL = strSQL & " tbTickDet.Precio, tbTickDet.IVA, tbTickCab_Cli.NIF, tbTickCab_Cli.CabeceraTicket"
+    'strSQL = strSQL & " FROM (tbSec_Art RIGHT JOIN tbFam_Art ON tbSec_Art.IdSeccion = tbFam_Art.IdSeccion) RIGHT JOIN (tbArtV RIGHT JOIN ((tbTickCab INNER JOIN tbTickDet ON tbTickCab.IdTickCab = tbTickDet.IdTickCab) LEFT JOIN tbTickCab_Cli ON tbTickCab.IdTickCab = tbTickCab_Cli.IdTickCab) ON tbArtV.IdArtV = tbTickDet.IdArtV) ON tbFam_Art.IdFamilia = tbArtV.IdFamilia"
+    strSQL = strSQL & " FROM tbTipTick RIGHT JOIN ((tbTickCab LEFT JOIN tbTickCab_Cli ON tbTickCab.IdTickCab = tbTickCab_Cli.IdTickCab) INNER JOIN (tbSec_Art RIGHT JOIN (tbFam_Art RIGHT JOIN (tbArtV RIGHT JOIN tbTickDet ON tbArtV.IdArtV = tbTickDet.IdArtV) ON tbFam_Art.IdFamilia = tbArtV.IdFamilia) ON tbSec_Art.IdSeccion = tbFam_Art.IdSeccion) ON tbTickCab.IdTickCab = tbTickDet.IdTickCab) ON tbTipTick.CodTipTick = tbTickCab.CodTipTick"
+    strSQL = strSQL & " WHERE tbTickCab.Fecha Between #" & Format(dtDesde, "mm/dd/yyyy") & "# And #" & Format(dtHasta, "mm/dd/yyyy") & "#"
+    strSQL = strSQL & " AND tbTickCab.IdPuesto = " & lngIdPuesto
+    If Nz(DameValorParam("ZsSoloTiposIncluirEnZ"), False) = True Then
+        strSQL = strSQL & " AND tbTipTick.IncluirEnZ = True"
+    End If
+    Pon_auxFiles_Historicos dtDesde, dtHasta, lngIdPuesto, , , dtHasta >= Date
+    Dim rsFi As Recordset
+    Set rsFi = CurrentDb.OpenRecordset("SELECT * FROM auxFiles ORDER BY Orden", dbOpenSnapshot)
+    While Not rsFi.EOF
+        Set db = OpenDatabase(rsFi("strMdb"), , True)
+        Set rs = db.OpenRecordset(strSQL)
+        While Not rs.EOF
+            If strNumFac <> rs("Serie") & rs("NumTicket") Then
+                intLin = 0
+                strNumFac = rs("Serie") & rs("NumTicket")
+                dtFec = rs("Fecha")
+                strNIF = Nz(rs("NIF"), "-")
+                strCli = Nz(RecDerTop(Nz(rs("CabeceraTicket"), ""), 0, 50), "")
+                lngL = lngL + 1
+            End If
+            intLin = intLin + 1
+            rsAux.AddNew
+            rsAux("AutoNum") = lngL
+    '        rsAux("NumFactura") = strNumFac
+            rsAux("Serie") = rs("Serie")
+            rsAux("NumFactura") = rs("NumTicket")
+            rsAux("linea") = intLin
+            rsAux("Fecha") = Nz(rs("Fecha"), dtFec)
+            rsAux("NIF") = strNIF
+            rsAux("Cliente") = strCli
+            'rsAux("Comentario") = rs("Comentario")
+            rsAux("Concepto") = rs("Concepto")
+            rsAux("Cantidad") = rs("Cantidad")
+            curTotal = rs("Precio") * rs("Cantidad")
+            If rs("IvaInc_Det") = True Then
+                rsAux("Precio") = rs("Precio") / (1 + rs("IVA"))
+                rsAux("Base") = curTotal / (1 + rs("IVA"))
+                rsAux("Importe") = curTotal
+            Else
+                rsAux("Precio") = rs("Precio")
+                rsAux("Base") = curTotal
+                rsAux("Importe") = curTotal * (1 + rs("IVA"))
+            End If
+            rsAux("IVA") = rs("IVA")
+            rsAux("IdSeccion") = rs("IdSeccion")
+            rsAux("IdFamilia") = rs("IdFamilia")
+            rsAux("IdArticulo") = rs("IdArtV")
+    '        rsAux("IvaCeroSN") = IIf(rs("IVA") = 0, True, False)
+            rsAux.Update
+            rs.MoveNext
+        Wend
+        rsFi.MoveNext
+    Wend
+Salir_ActualizarEF_auxRegistroVentas:
+    Exit Sub
+Error_ActualizarEF_auxRegistroVentas:
+    Select Case Err
+        Case Else
+            MsgBox "Error nº " & Err & vbCrLf & Err.Description & vbCrLf & "En ActualizarEF_auxRegistroVentas"
+    End Select
+    Resume Salir_ActualizarEF_auxRegistroVentas
+    Resume Next
+End Sub
+
+Public Sub PonCabeceraZ(rsZ As Recordset, ByRef intLin As Integer, dtFecha As Date, Optional strTitulo As String = "", Optional strSubTitulo As String = "", Optional strSubRayas As String = "")
+        rsZ.AddNew
+        rsZ("Fecha") = dtFecha
+        intLin = intLin + 1
+        rsZ("linea") = intLin
+        rsZ("TextoLinea") = LlenaChar("_", 40)
+        rsZ.Update
+        If strTitulo <> "" Then
+            rsZ.AddNew
+            rsZ("Fecha") = dtFecha
+            intLin = intLin + 1
+            rsZ("linea") = intLin
+            rsZ("TextoLinea") = Centra(strTitulo, 40)
+            rsZ.Update
+        End If
+        If strSubTitulo <> "" Then
+            rsZ.AddNew
+            rsZ("Fecha") = dtFecha
+            intLin = intLin + 1
+            rsZ("linea") = intLin
+            rsZ("TextoLinea") = Centra(strSubTitulo, 40)
+            rsZ.Update
+        End If
+        If strSubRayas <> "" Then
+            rsZ.AddNew
+            rsZ("Fecha") = dtFecha
+            intLin = intLin + 1
+            rsZ("linea") = intLin
+            rsZ("TextoLinea") = Centra(strSubRayas, 40)
+            rsZ.Update
+        End If
+
+End Sub
+
+Public Sub PonLineaZ(rsZ As Recordset, ByRef intLin As Integer, ByRef i As Integer, dtFecha As Date, strTexto As String)
+    rsZ.AddNew
+    rsZ("Fecha") = dtFecha
+    intLin = intLin + 1
+    i = i + 1
+    rsZ("linea") = intLin
+    rsZ("TextoLinea") = strTexto
+    rsZ.Update
+End Sub
+
+
+
+Public Sub GrabaLin(dt As Date, ByRef intLin As Integer, strTexto As String, Optional lngId As Long = 0)
+    grsZ.AddNew
+    grsZ("Fecha") = dt
+    intLin = intLin + 1
+    grsZ("linea") = intLin
+    grsZ("TextoLinea") = strTexto
+    If lngId <> 0 Then grsZ("Id") = lngId
+    grsZ.Update
+End Sub
+
+
+Public Sub RellenarPresenciaZs(dtFecha As Date)
+    Dim i As Integer, i2 As Integer
+    Dim rs As Recordset
+    Dim strSQL As String, strAntNum As String
+    Dim intLin As Integer, curBase As Currency, curTotal As Currency, curBase2 As Currency, curTotal2 As Currency, curP As Currency, curB As Currency, curT As Currency
+    Dim intComenA As Integer, intComenN As Integer
+    Dim lngT As Long, strTXT As String, curT0 As Currency, curTotal0 As Currency, strBarm As String
+    Dim lngIdBarm As Long
+    Dim rs2 As Recordset, strTexto As String, j As Integer, curDtos As Currency, iDto As Integer
+    Dim intVerNumFac As Integer
+    On Error GoTo Error_RellenarPresenciaZs
+    DoCmd.Hourglass True
+    PonPresenciaOK dtFecha, False
+    Call ACTUALIZAR_auxPresenciaBarm(dtFecha, dtFecha)
+    DoCmd.Hourglass False
+    strSQL = "DELETE * FROM tbZs "
+    CurrentDb.Execute strSQL, dbFailOnError
+    Set grsZ = CurrentDb.OpenRecordset("tbZs")
+    intLin = 0
+    strTexto = ": " & Nz(DameValorParam("EstablecimientoNombre"), "¿Establecimiento?")
+    strTexto = RecDerTop("Establecimiento", 0, 40 - Len(strTexto)) & strTexto
+    GrabaLin dtFecha, intLin, strTexto
+
+    GrabaLin dtFecha, intLin, "Presencia de Empleadas/os: " & Format(dtFecha, "dd/mm/yyyy")
+    GrabaLin dtFecha, intLin, LlenaChar("_", 40)
+    GrabaLin dtFecha, intLin, Centra("Empleada/o", 13) & " " & Centra("Entra-Sale", 13) & " " & Centra("Tiempo", 12)
+    GrabaLin dtFecha, intLin, LlenaChar("-", 13) & " " & LlenaChar("-", 13) & " " & LlenaChar("-", 12)
+    
+    strSQL = "SELECT auxPresenciaBarm.IdPresenciaBarm, auxPresenciaBarm.IdBarm, auxPresenciaBarm.Empleado, auxPresenciaBarm.Fecha, DimeHorarioDia(Nz([ES],''),True) AS Presencia, Minutos_a_Horas(Nz([Tiempo],0)) AS Horas"
+    strSQL = strSQL & " FROM auxPresenciaBarm;"
+    Set rs = CurrentDb.OpenRecordset(strSQL)
+    i = 0
+    
+    While Not rs.EOF
+        i = i + 1
+        'curT = rs("SumaDeTotal")
+        j = LineasDeStr(rs("Presencia"))
+        If j = 0 Then
+            GrabaLin dtFecha, intLin, Llena(rs("Empleado"), 13) & " " & Centra("-", 13) & " " & LlenaIzq(rs("Horas"), 12), rs("IdPresenciaBarm")
+        Else
+            For i2 = 1 To j
+                If i2 < j Then
+                    GrabaLin dtFecha, intLin, Llena(IIf(i2 = 1, Nz(rs("Empleado"), "?"), "   ..."), 13) & " " & Centra(ExtraeLin(rs("Presencia"), i2), 13), rs("IdPresenciaBarm")
+                Else
+                    GrabaLin dtFecha, intLin, Llena(IIf(i2 = 1, Nz(rs("Empleado"), "?"), "   ..."), 13) & " " & Centra(ExtraeLin(rs("Presencia"), i2), 13) & " " & LlenaIzq(rs("Horas"), 12), rs("IdPresenciaBarm")
+                End If
+            Next i2
+        End If
+        rs.MoveNext
+    Wend
+    'If i > 1 Then ' si hay más de un IVA poner el total
+    '    GrabaLin dtFecha, intLin, LlenaChar("-", 10) & " " & LlenaChar("-", 14) & " " & LlenaChar("-", 14)
+    '    GrabaLin dtFecha, intLin, Llena("TOTAL", 10) & " " & LlenaIzq(Format(curBase, "Currency"), 14) & " " & LlenaIzq(Format(curTotal, "Currency"), 14)
+    'End If
+
+Salir_RellenarPresenciaZs:
+    Exit Sub
+Error_RellenarPresenciaZs:
+    Select Case Err
+        Case Else
+            MsgBox "Error nº " & Err & vbCrLf & Err.Description & vbCrLf & "En RellenarZ"
+    End Select
+    Resume Salir_RellenarPresenciaZs
+End Sub

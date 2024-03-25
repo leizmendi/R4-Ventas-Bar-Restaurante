@@ -51,6 +51,8 @@ Public Sub ACTUALIZAR_auxRegistroVentas(dtD As Date, dtH As Date, Optional strHo
         strSQL = strSQL & " LEFT JOIN tbBarm ON tbTickCab.IdBarm = tbBarm.IdBarm"
     End If
     strSQL = strSQL & " WHERE tbTickCab.Fecha Between #" & Format(dtD, "mm/dd/yyyy") & "# And #" & Format(dtH, "mm/dd/yyyy") & "#"
+    If InStr(strHoraDesde, ":") = 2 Then strHoraDesde = "0" & strHoraDesde
+    If InStr(strHoraHasta, ":") = 2 Then strHoraHasta = "0" & strHoraHasta
     strSQL = strSQL & " AND Format(tbTickCab.Hora,'HH:NN')>='" & strHoraDesde & "'"
     strSQL = strSQL & " AND Format(tbTickCab.Hora,'HH:NN')<='" & strHoraHasta & "'"
     If lngIdPuesto <> 0 Then

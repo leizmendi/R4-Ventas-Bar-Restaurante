@@ -10,7 +10,7 @@ Public Function PrepararInforme(lngIdInforme As Long, dtD As Date, dtH As Date, 
     strSQL = "SELECT * FROM sysInformes WHERE IdInforme = " & lngIdInforme
     Set rs = CurrentDb.OpenRecordset(strSQL, dbOpenSnapshot)
     If rs.EOF Then
-        MBox "No se encontró Informe Id = " & lngIdInforme, vbExclamation
+        MsgBox "No se encontró Informe Id = " & lngIdInforme, vbExclamation
         GoTo HandleExit
     End If
     DoCmd.Hourglass True
@@ -32,12 +32,19 @@ Public Function PrepararInforme(lngIdInforme As Long, dtD As Date, dtH As Date, 
     If rs("auxPagosCaja_ActuSN") = True Then
         Call ACTUALIZAR_auxPagosCaja(dtD, dtH, lngIdPuesto)
     End If
+    If rs("PonSQL") = "qryZs" Then
+        CurrentDb.Execute "DELETE * FROM tbZs", dbFailOnError
+        Dim dt As Date
+        For dt = dtD To dtH
+            RellenarZs dt, lngIdPuesto, , , False
+        Next dt
+    End If
     DoCmd.Hourglass False
         
 HandleExit:
     Exit Function
 HandleError:
-    MBox Err.Description
+    MsgBox Err.Description
     Resume HandleExit
 End Function
     
@@ -65,7 +72,7 @@ Error_PonCarpetasListados:
             strCListados = ""
             Resume VerCarpeta
         Case Else
-            MBox "Error nº " & Err & " en PonCarpetasListados" & vbCrLf & Err.Description
+            MsgBox "Error nº " & Err & " en PonCarpetasListados" & vbCrLf & Err.Description
             Resume Salir_PonCarpetasListados
     End Select
 End Sub
@@ -84,7 +91,7 @@ Salir_ArreglarComensales:
 Error_ArreglarComensales:
     Select Case Err
         Case Else
-            MBox "Error nº " & Err & " en ArreglarComensales" & vbCrLf & Err.Description
+            MsgBox "Error nº " & Err & " en ArreglarComensales" & vbCrLf & Err.Description
             Resume Salir_ArreglarComensales
     End Select
 
@@ -106,7 +113,7 @@ Public Function DimePivot_TramoDH() As String
 HandleExit:
     Exit Function
 HandleError:
-    MBox Err.Description
+    MsgBox Err.Description
     Resume HandleExit
 End Function
 
@@ -143,7 +150,7 @@ Public Function DimePivot_Horas(Optional intHoraIni As Integer = 7, Optional int
 HandleExit:
     Exit Function
 HandleError:
-    MBox Err.Description
+    MsgBox Err.Description
     Resume HandleExit
 End Function
 
@@ -214,7 +221,7 @@ Public Sub Pon_qryRegistroVentas_Diario_X_IVAs_SQL_Empresas_Resto(Optional intVe
         GoTo HandleExit
     End If
     sSQL = sSQL & ", qryRegistroVentas_Diario_X_IVAs_FormasPago.[Total Día]" _
-            & ", qryRegistroVentas_Diario_X_IVAs_FormasPago." & sFPCli & " AS [Importe " & sFPCli & "], [" & sFPCli & "]/(1+" & vIVAs(0) & ") AS [" & sIVA0 & "_Base_" & sFPCli & "], [" & sFPCli & "]*" & vIVAs(0) & "/(1+" & vIVAs(0) & ") AS [" & sIVA0 & "_Cuota_IVA_" & sFPCli & "]" _
+            & ", CCur(Nz([" & sFPCli & "],0)) AS [Importe " & sFPCli & "], Nz([" & sFPCli & "],0)/(1+" & vIVAs(0) & ") AS [" & sIVA0 & "_Base_" & sFPCli & "], Nz([" & sFPCli & "],0)*" & vIVAs(0) & "/(1+" & vIVAs(0) & ") AS [" & sIVA0 & "_Cuota_IVA_" & sFPCli & "]" _
             & ", [Total Día]-Nz([" & sFPCli & "],0) AS [Total Resto Clientes], [" & sIVA0 & "]-[" & sIVA0 & "_Base_" & sFPCli & "] AS [" & sIVA0 & "_Base_Resto], [" & sIVA0 & "_Base_Resto]*" & vIVAs(0) & " AS [" & sIVA0 & "_Cuota_IVA_Resto]"
     If UBound(vIVAs) > 0 Then
         For i = 1 To UBound(vIVAs)
@@ -235,7 +242,7 @@ Public Sub Pon_qryRegistroVentas_Diario_X_IVAs_SQL_Empresas_Resto(Optional intVe
     strColumnas = "1" & IIf(intVerPuestos, "1", "0") & _
                         IIf(intVerNumTique, "11", "00") & _
                         IIf(intVerComensales, "1", "0") & "1" & _
-                        ",101215151212,211133,050101010408,000011"
+                        ",101215151212,211133,050101010808,000011"
     sSQL = "UPDATE sysInformes SET Columnas = " & ConComillas(strColumnas) & _
             " WHERE (IdInforme = 5 OR IdInforme = 51)"
     CurrentDb.Execute sSQL, dbFailOnError
@@ -611,6 +618,7 @@ Public Function Pon_SQL(strPonSQL As String, intDM As Integer, intValPor As Inte
                      " FROM auxPresenciaBarm" & _
                      " ORDER BY IdBarm, Fecha"
             CurrentDb.QueryDefs("qryPresenciaBarm").SQL = strSQL
+        Case "qryZs"
             
 
     End Select
@@ -618,8 +626,8 @@ Public Function Pon_SQL(strPonSQL As String, intDM As Integer, intValPor As Inte
 HandleExit:
     Exit Function
 HandleError:
-    MBox Err.Description
-    Resume 'HandleExit
+    MsgBox Err.Description
+    Resume HandleExit
 End Function
 
 Public Function EnvioListadosProgramados(Optional intPreguntar As Integer = True) As Integer
@@ -639,7 +647,7 @@ Public Function EnvioListadosProgramados(Optional intPreguntar As Integer = True
             strT = strT & vbCrLf & "Se pedirá confirmación antes de cada informe"
         End If
         If intPreguntar Then
-            intR = MBox("¿Enviar listados programados ahora?" & vbCrLf & "-----------------------------------------------" & vbCrLf & strT, vbOKCancel + vbQuestion + vbDefaultButton2)
+            intR = MsgBox("¿Enviar listados programados ahora?" & vbCrLf & "-----------------------------------------------" & vbCrLf & strT, vbOKCancel + vbQuestion + vbDefaultButton2)
             If intR = vbCancel Then GoTo HandleExit
         End If
         rs.MoveFirst
@@ -647,7 +655,7 @@ Public Function EnvioListadosProgramados(Optional intPreguntar As Integer = True
     i = 0
     While Not rs.EOF
         If intPreguntar Then
-            intR = MBox("¿Enviar listado " & ExtraeLin(rs("Titulo"), 1) & vbCrLf & "A: " & rs("ToEmail") & "?", vbYesNo + vbQuestion + vbDefaultButton2)
+            intR = MsgBox("¿Enviar listado " & ExtraeLin(rs("Titulo"), 1) & vbCrLf & "A: " & rs("ToEmail") & "?", vbYesNo + vbQuestion + vbDefaultButton2)
             If intR = vbNo Then GoTo Siguiente
         End If
         
@@ -669,6 +677,6 @@ Siguiente:
 HandleExit:
     Exit Function
 HandleError:
-    MBox Err.Description
+    MsgBox Err.Description
     Resume HandleExit
 End Function

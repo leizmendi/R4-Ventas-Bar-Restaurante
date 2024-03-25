@@ -295,7 +295,7 @@ Intro_Cobro:
         curImporte = curCantidad 'para devolver el valor de la cantidad finalmente pagada
         'If lng_aIdBP > 0 Then
         If intBP > 0 Then
-            strSQL = "INSERT INTO tbpagoscaja ( IdPuesto, IdCajaDet, Fecha, Importe, FormaPago, aIdBarm, aIdProveedor, Concepto )"
+            strSQL = "INSERT INTO tbPagosCaja ( IdPuesto, IdCajaDet, Fecha, Importe, FormaPago, aIdBarm, aIdProveedor, Concepto )"
             If glngMiPuesto = 0 Then Pon_glngMiPuesto
             
             strSQL = strSQL & " SELECT " & glngMiPuesto & " AS Expr1, " & _
