@@ -883,6 +883,8 @@ Public Sub NuevoTique(Optional lngIdLugar As Long = 0, _
     On Error GoTo Error_NuevoTique
     InicializaTique
     IdTickCab = -1
+    
+    
     'If Nz(DameValorParam("CallCargaPanel"), True) = True Then Call Carga_Panel(0, Me("subfrmPanel").Form, True)
     If glintTiquesInicializados = False Then
         gllngIdBarm = Nz(DLookup("IdBarm", "tbBarm", "Predeterminado = True"), 0)
@@ -923,7 +925,21 @@ Public Sub NuevoTique(Optional lngIdLugar As Long = 0, _
             Case Else
                 gintIvaInc_Pre = 4
         End Select
-        
+        gbTiquesAprovecharVaciosSN = Nz(DameValorParam("TicketsAprovecharTiquesVaciosSN"), False)
+    End If
+    'Caso de existir tiques vacíos del día ver si aprovecharlos.....
+    If gbTiquesAprovecharVaciosSN = True Then
+        IdTickCab = Nz(DLookup("IdTickCab", "qTiquesVaciosHoy"), -1)
+        If IdTickCab <> -1 Then
+            LoadIdTickCab IdTickCab
+            If lngIdLugar <> 0 Then
+                Me.IdLugar_ = lngIdLugar
+                'IdTarifa = Nz(DLookup("IdTrf", "tbEspa_Lugares", "IdLugar = " & lngIdLugar), gllngIdTrf)
+            End If
+            If lngIdBarm <> 0 Then Me.IdBarm_ = lngIdBarm
+            CargaTiqueTPV
+            GoTo Salir_NuevoTique
+        End If
     End If
     If glintPedirMesa = True And lngIdLugar = 0 Then
         lngIdLugar = DimeIdLugar()

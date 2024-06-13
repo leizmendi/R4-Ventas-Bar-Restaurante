@@ -1,0 +1,22 @@
+Option Compare Database
+Option Explicit
+        
+    Global gintDemo As Integer
+    'Tiques
+    Global glintTiquesInicializados As Integer
+    Global gllngIdTrf As Long, glintTarifasXHoras As Integer
+    Global gllngCodTipTick As Long
+    Global gllngIdBarm As Long
+    Global gllngIdPuesto As Long
+    Global glstrSerie  As String
+    Global glintPedirComensales As Integer
+    Global glintPedirBarman As Integer
+    Global glintPedirBarmanXAcceso As Integer
+    Global glintPedirMesa As Integer
+    Global glintImprimirTiquesSiempre  As Integer
+    Global glintIvaInc As Integer
+    Global glstrTicketsHoraCambioDia As String
+    Global glintAlRepetirUltimoSumar As Integer
+    Global glintIvaInc_Precios As Integer
+    Global gcT_silla As cTique
+    Global gbTiquesAprovecharVaciosSN As Boolean
