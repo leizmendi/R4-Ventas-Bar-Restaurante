@@ -205,7 +205,7 @@ Error_Actualizar_auxRegistroVentasZ_FormasPago:
         Case Else
             MsgBox "Error nº " & Err & vbCrLf & Err.Description & vbCrLf & "En Actualizar_auxRegistroVentasZ_FormasPago"
     End Select
-    Resume 'Salir_Actualizar_auxRegistroVentasZ_FormasPago
+    Resume Salir_Actualizar_auxRegistroVentasZ_FormasPago
 End Sub
 
 Public Sub Actualizar_auxPresenciaCamareros(dtFecha As Date)
@@ -284,7 +284,7 @@ Public Sub RellenarZs(dtFecha As Date _
     End If
 
 RegistroDeVentas:
-    If DameValorParam("ZsVentasXIVA") = False Then GoTo DesgloseSecciones
+    If DameValorParam("ZsVentasXIVA") = False Then GoTo TotalesSeries
     GrabaLin dtFecha, intLin, "Registro de Ventas: " & Format(dtFecha, "dd/mm/yyyy")
     intComenA = Nz(DSum("Adultos", "auxRegistroVentasZ_Clientes_IVA"), 0)
     intComenN = Nz(DSum("Niños", "auxRegistroVentasZ_Clientes_IVA"), 0)
@@ -1017,7 +1017,7 @@ Error_RellenarZs:
         Case Else
             MsgBox "Error nº " & Err & vbCrLf & Err.Description & vbCrLf & "En RellenarZ"
     End Select
-    Resume 'Salir_RellenarZs
+    Resume Salir_RellenarZs
 End Sub
 
 
